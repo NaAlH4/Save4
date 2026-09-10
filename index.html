@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Save4 — 桌面陪伴桌宠</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+  <!-- ══════════ 桌宠形象层 ══════════ -->
+  <div id="pet" class="layer" role="img" aria-label="Save4 桌宠">
+    <!-- 悬停工具条 -->
+    <div id="pet-toolbar" class="no-drag pet-toolbar">
+      <button id="btn-chat" class="tool-btn" title="AI 对话" aria-label="AI 对话">💬</button>
+      <button id="btn-journal" class="tool-btn" title="写日记" aria-label="写日记">📔</button>
+      <button id="btn-toggle-mode" class="tool-btn" title="展开 / 收起面板" aria-label="切换面板">▤</button>
+      <button id="btn-hide" class="tool-btn" title="隐藏到托盘" aria-label="隐藏">–</button>
+    </div>
+
+    <!-- 形象层：SVG 猫 或 立绘图片，二者互斥显示（#pet-body 承载动画/尺寸） -->
+    <div id="pet-body">
+      <svg id="pet-svg" class="pet-expr-idle" viewBox="0 0 120 120" preserveAspectRatio="xMidYMid meet">
+      <!-- 耳朵 -->
+      <polygon class="ear" points="34,34 40,8 58,26"/>
+      <polygon class="ear" points="86,34 80,8 62,26"/>
+      <polygon class="ear-inner" points="45,28 43.5,17 52,23"/>
+      <polygon class="ear-inner" points="75,28 76.5,17 68,23"/>
+      <!-- 身体与头 -->
+      <ellipse class="body" cx="60" cy="96" rx="34" ry="24"/>
+      <circle class="head" cx="60" cy="54" r="32"/>
+      <!-- 胡须 -->
+      <g class="whiskers" stroke-linecap="round">
+        <path d="M26,58 L40,60"/><path d="M27,65 L40,64"/>
+        <path d="M94,58 L80,60"/><path d="M93,65 L80,64"/>
+      </g>
+      <!-- 腮红（常驻） -->
+      <circle class="blush" cx="42" cy="65" r="5"/><circle class="blush" cx="78" cy="65" r="5"/>
+
+      <!-- ═══ 表情组：由 pet.js 在 #pet-svg 上切换 pet-expr-* ═══ -->
+      <g class="expr expr-idle">
+        <ellipse class="eye" cx="47" cy="53" rx="4.2" ry="6"/>
+        <ellipse class="eye" cx="73" cy="53" rx="4.2" ry="6"/>
+        <path class="nose" d="M55.5,62 L64.5,62 L60,68.5 Z"/>
+        <path class="mouth" d="M52,67.5 q4,5.5 8,0 q4,5.5 8,0"/>
+      </g>
+      <g class="expr expr-happy">
+        <path class="m-eyes" d="M40,53 q7,-9 14,0 M66,53 q7,-9 14,0"/>
+        <path class="mouth-fill" d="M50,63 A10,9 0 0 0 70,63 Z"/>
+        <path class="nose" d="M55.5,60 L64.5,60 L60,66.5 Z"/>
+      </g>
+      <g class="expr expr-angry">
+        <path class="a-eyes" d="M42,53 l12,6 M78,53 l-12,6"/>
+        <path class="a-brow" d="M41,44 l14,-3 M79,44 l-14,-3"/>
+        <path class="mouth" d="M53,70 q7,8 14,0"/>
+        <path class="nose" d="M55.5,62 L64.5,62 L60,68.5 Z"/>
+      </g>
+    </svg>
+
+    <!-- 图片形象层（皮肤切换用，默认隐藏；SVG 猫与各立绘互斥显示） -->
+    <img id="pet-img" src="flipped_cut.png" alt="Save4 桌宠" draggable="false">
+    <img id="pet-img-liuge" src="liuge.png" alt="刘哥 桌宠" draggable="false">
+    </div><!-- /#pet-body -->
+
+    <!-- 右下角缩放手柄 -->
+    <div id="pet-resize" class="no-drag resize-handle" title="拖动缩放"></div>
+  </div>
+
+  <!-- ══════════ 备忘录面板层（内容在 M3 接入）══════════ -->
+  <div id="panel" class="layer panel">
+    <div id="panel-header" class="panel-header">
+      <span class="panel-title">Save4</span>
+      <span class="panel-actions no-drag">
+        <button id="btn-collapse" class="tool-btn" title="收起为一条文本">–</button>
+        <button id="btn-panel-hide" class="tool-btn" title="隐藏到托盘">×</button>
+      </span>
+    </div>
+    <div id="panel-body" class="panel-body">
+      <!-- 页签：备忘录 / 定时器 / 日记 -->
+      <div class="panel-tabs no-drag" role="tablist">
+        <button id="tab-todo" class="panel-tab on" data-pane="todo" role="tab">📝 备忘录</button>
+        <button id="tab-timer" class="panel-tab" data-pane="timer" role="tab">⏱ 定时器</button>
+        <button id="tab-journal" class="panel-tab" data-pane="journal" role="tab">📔 日记</button>
+      </div>
+
+      <!-- ═══ 备忘录页 ═══ -->
+      <div id="pane-todo" class="pane">
+        <!-- 添加 / 编辑待办表单 -->
+        <form id="todo-form" autocomplete="off">
+          <div class="tf-row1">
+            <input id="todo-text" type="text" maxlength="120" placeholder="想记点什么？比如：整理周报" required>
+            <button id="todo-add" type="submit" title="添加" aria-label="添加待办">＋</button>
+          </div>
+          <div class="tf-row2">
+            <span class="tf-label">提醒</span>
+            <input id="todo-time" type="datetime-local" aria-label="提醒时间">
+            <select id="todo-repeat" aria-label="重复规则">
+              <option value="none">不重复</option>
+              <option value="daily">每天</option>
+              <option value="weekly">每周</option>
+            </select>
+          </div>
+          <div id="todo-editbar" class="hidden tf-editbar">
+            <span class="dim">正在编辑…</span>
+            <button id="todo-cancel-edit" type="button" class="mini-btn">取消编辑</button>
+          </div>
+        </form>
+
+        <div id="todo-list" class="todo-list"></div>
+        <div id="todo-empty" class="placeholder-note dim" style="display:none">
+          <p>还没有待办。</p>
+          <p>在上面输入事项，可选设置提醒时间；<br>到点时桌宠会跳起来提醒你 🐾</p>
+        </div>
+        <div class="panel-footer dim">提醒需保持本页面开启 · 到点自动弹出</div>
+      </div>
+
+      <!-- ═══ 定时器页（M4） ═══ -->
+      <div id="pane-timer" class="pane hidden">
+        <div id="timer-set" class="timer-block">
+          <div class="timer-name-row">
+            <input id="timer-name" type="text" maxlength="40" placeholder="活动名称，如：打游戏 / 写代码">
+          </div>
+          <div class="tf-row2 timer-set-row">
+            <span class="tf-label">时长</span>
+            <input id="timer-min" type="number" min="1" max="480" value="25" aria-label="时长（分钟）">
+            <span class="tf-label">分钟</span>
+          </div>
+          <div class="timer-presets" id="timer-presets">
+            <span class="tf-label dim">预设</span>
+            <button type="button" class="mini-btn" data-name="工作" data-min="45">工作45′</button>
+            <button type="button" class="mini-btn" data-name="休息" data-min="15">休息15′</button>
+            <button type="button" class="mini-btn" data-name="专注" data-min="25">专注25′</button>
+            <button type="button" class="mini-btn" data-name="冥想" data-min="10">冥想10′</button>
+          </div>
+          <button id="timer-start" type="button" class="mini-btn primary wide">▶ 开始倒计时</button>
+        </div>
+
+        <div id="timer-run" class="timer-block hidden">
+          <div id="timer-run-name" class="timer-run-name"></div>
+          <div id="timer-clock" class="timer-clock">00:00</div>
+          <div class="timer-bar"><div id="timer-bar-fill"></div></div>
+          <div id="timer-ctrl" class="timer-ctrl">
+            <button id="timer-pause" type="button" class="mini-btn">暂停</button>
+            <button id="timer-extend" type="button" class="mini-btn">+5分</button>
+            <button id="timer-stop" type="button" class="mini-btn danger">终止</button>
+          </div>
+          <div class="panel-footer dim">到点桌宠会炸毛提醒 ⚡ 可延长 5 分钟</div>
+        </div>
+      </div>
+
+      <!-- ═══ 日记页（快速开写 / 查看） ═══ -->
+      <div id="pane-journal" class="pane hidden">
+        <!-- 编辑器视图 -->
+        <div id="journal-editor" class="journal-editor">
+          <div class="journal-bar">
+            <span id="journal-date" class="journal-date"></span>
+            <span id="journal-status" class="journal-status dim"></span>
+          </div>
+          <textarea id="journal-text" placeholder="今天想说点什么？&#10;想到什么写什么，会自动保存…"></textarea>
+          <div class="journal-actions">
+            <button id="journal-new" type="button" class="mini-btn primary">＋ 新建</button>
+            <button id="journal-list-btn" type="button" class="mini-btn">📋 全部日记</button>
+            <span id="journal-count" class="dim journal-count">0 字</span>
+          </div>
+        </div>
+
+        <!-- 列表视图 -->
+        <div id="journal-list-view" class="journal-list-view hidden">
+          <div class="journal-list-bar">
+            <button id="journal-back" type="button" class="mini-btn">← 返回</button>
+            <input id="journal-search" type="text" placeholder="搜索日记内容…">
+          </div>
+          <div id="journal-entries" class="journal-entries"></div>
+        </div>
+      </div>
+    </div>
+    <div id="panel-resize" class="no-drag resize-handle" title="拖动缩放"></div>
+  </div>
+
+  <!-- ══════════ 收起条（仅“仅形象”模式显示）══════════ -->
+  <div id="strip" class="layer strip" title="点击展开面板">
+    <span id="strip-text">待办 0 项 · 点击展开</span>
+  </div>
+
+  <!-- ══════════ 托盘（完全隐藏时显示）══════════ -->
+  <div id="tray" class="tray" title="点击恢复桌宠">🐾 Save4 · 点击恢复</div>
+
+  <!-- ══════════ 气泡（提醒/到点提示，公共队列，见 bubble.js） ══════════ -->
+  <div id="bubble" class="bubble hidden" role="alert">
+    <button id="bubble-close" class="bubble-close" aria-label="关闭">×</button>
+    <div id="bubble-text"></div>
+    <div id="bubble-actions" class="bubble-actions"></div>
+  </div>
+
+  <!-- ══════════ AI 对话窗口（M5，点击桌宠或右键菜单打开） ══════════ -->
+  <div id="chat" class="layer chat hidden">
+    <div id="chat-header" class="chat-header">
+      <div class="chat-mode" role="tablist">
+        <button class="chat-mode-btn on" data-mode="soothe">🫂 情绪安抚</button>
+        <button class="chat-mode-btn" data-mode="struct">🧩 认知解构</button>
+      </div>
+      <span class="chat-actions no-drag">
+        <button id="chat-clear" class="tool-btn" title="清空本次对话">🗑</button>
+        <button id="chat-history" class="tool-btn" title="历史记录">🕘</button>
+        <button id="chat-close" class="tool-btn" title="关闭">×</button>
+      </span>
+    </div>
+    <div id="chat-body" class="chat-body"></div>
+    <div class="chat-inputbar no-drag">
+      <textarea id="chat-input" rows="2" placeholder="说说你的想法…（Enter 发送，Shift+Enter 换行）"></textarea>
+      <button id="chat-send" class="mini-btn primary">发送</button>
+    </div>
+    <!-- 历史记录面板 -->
+    <div id="chat-history-panel" class="chat-history-panel hidden">
+      <div class="chip-hist-title">历史记录</div>
+      <div id="chat-history-list" class="chat-history-list"></div>
+    </div>
+    <div id="chat-resize" class="no-drag resize-handle" title="拖动缩放"></div>
+  </div>
+
+  <!-- ══════════ 右键菜单 ══════════ -->
+  <div id="menu" class="menu hidden" role="menu">
+    <button data-act="chat">💬 AI 对话</button>
+    <button data-act="journal">📔 写日记 / 随笔</button>
+    <button data-act="full">完全展开</button>
+    <button data-act="pet">仅显示形象</button>
+    <button data-act="hidden">完全隐藏</button>
+      <hr>
+    <button data-act="settings">设置…</button>
+  </div>
+
+  <!-- ══════════ 设置对话框 ══════════ -->
+  <dialog id="settings-dialog">
+    <form method="dialog" id="settings-form">
+      <h2>Save4 设置</h2>
+
+      <fieldset>
+        <legend>桌宠形象（皮肤）</legend>
+        <label><input type="radio" name="petSkin" value="cat"> 几何小猫</label>
+        <label><input type="radio" name="petSkin" value="anime"> 动漫小人（立绘）</label>
+        <label id="skin-opt-liuge"><input type="radio" name="petSkin" value="liuge"> 刘哥（点赞）</label>
+      </fieldset>
+
+      <fieldset>
+        <legend>收起条显示内容（“仅形象”模式）</legend>
+        <label><input type="radio" name="stripContent" value="todos"> 待办总数</label>
+        <label><input type="radio" name="stripContent" value="recent"> 最近事项</label>
+        <label><input type="radio" name="stripContent" value="time"> 最近提醒时间</label>
+      </fieldset>
+
+      <fieldset>
+        <legend>数据</legend>
+        <p class="dim">导出为 JSON 文件，可在 网页版 ↔ 桌面版 之间迁移数据，也可作备份。</p>
+        <div class="data-actions">
+          <button id="btn-export" type="button" class="mini-btn">⬇ 导出数据</button>
+          <button id="btn-import" type="button" class="mini-btn">⬆ 导入数据</button>
+        </div>
+        <input id="import-file" type="file" accept=".json,application/json" hidden>
+      </fieldset>
+
+      <fieldset>
+        <legend>AI 对话</legend>
+        <div class="ai-field">
+          <label>接口地址
+            <input id="ai-baseurl" type="text" placeholder="https://api.deepseek.com" autocomplete="off">
+          </label>
+          <label>API Key
+            <input id="ai-key" type="password" placeholder="sk-..." autocomplete="off">
+          </label>
+          <label>模型
+            <input id="ai-model" type="text" placeholder="deepseek-chat" autocomplete="off">
+          </label>
+          <div id="ai-model-chips" class="model-chips">
+            <button type="button" class="model-chip" data-model="deepseek-chat">deepseek-chat</button>
+            <button type="button" class="model-chip" data-model="deepseek-reasoner">deepseek-reasoner 💭</button>
+            <button type="button" class="model-chip" data-model="qwen-plus">qwen-plus</button>
+            <button type="button" class="model-chip" data-model="gpt-4o-mini">gpt-4o-mini</button>
+          </div>
+          <p class="dim ai-hint">点胶囊快速选模型；<b>想看到思考过程需用 deepseek-reasoner</b>（或对外输出 reasoning_content 的模型）。</p>
+          <button id="btn-ai-save" type="button" class="mini-btn primary">保存 AI 配置</button>
+          <button id="btn-ai-test" type="button" class="mini-btn">测试连接</button>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>角色卡 / 预设提示词（可留空）</legend>
+        <p class="dim">支持纯文本，或 JSON：{"system": "..."}。留空则用内置默认；填了角色卡将接管助手人设。</p>
+        <textarea id="ai-rolecard" rows="4" placeholder="可留空
+例如：你是一个毒舌但热心的猫娘…"></textarea>
+        <p class="dim">用户画像（可留空，作为长期上下文）</p>
+        <textarea id="ai-profile" rows="2" placeholder="可留空，例如：INTP，容易过度思考不行动"></textarea>
+        <button id="btn-ai-role-save" type="button" class="mini-btn primary">保存角色卡 / 画像</button>
+      </fieldset>
+
+      <div class="dlg-actions">
+        <button value="cancel" formnovalidate>关闭</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="js/storage.js"></script>
+  <script src="js/storage_db.js"></script>
+  <script src="js/drag.js"></script>
+  <script src="js/pet.js"></script>
+  <script src="js/panel.js"></script>
+  <script src="js/bubble.js"></script>
+  <script src="js/todos.js"></script>
+  <script src="js/reminder.js"></script>
+  <script src="js/timer.js"></script>
+  <script src="js/journal.js"></script>
+  <script src="js/dataio.js"></script>
+  <script src="js/chat.js"></script>
+  <script src="js/app.js"></script>
+  <script src="js/desktop.js"></script>
+</body>
+</html>

@@ -1,0 +1,67 @@
+{
+  "name": "save4",
+  "productName": "Save4",
+  "version": "0.1.0",
+  "description": "Save4 — 一个住在你桌面的可爱陪伴桌宠：备忘提醒 / 倒计时 / AI 对话消化",
+  "main": "electron/main.js",
+  "author": "Save4",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron .",
+    "fetch:bins": "node scripts/fetch-builder-bins.js",
+    "dist": "electron-builder --win",
+    "dist:dir": "electron-builder --win --dir"
+  },
+  "devDependencies": {
+    "electron": "^44.3.0",
+    "electron-builder": "^26.15.3",
+    "sharp": "^0.35.4"
+  },
+  "build": {
+    "appId": "com.save4.desktop",
+    "productName": "Save4",
+    "directories": {
+      "output": "release"
+    },
+    "npmRebuild": false,
+    "files": [
+      "electron/**/*",
+      "index.html",
+      "js/**/*",
+      "css/**/*",
+      "shortcut_icon.ico",
+      "flipped_cut.png",
+      "liuge.png",
+      "package.json"
+    ],
+    "extraResources": [],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "shortcut_icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Save4"
+    },
+    "portable": {
+      "artifactName": "Save4-${version}-portable.exe"
+    }
+  }
+}
