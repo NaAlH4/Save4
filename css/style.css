@@ -51,6 +51,7 @@ body {
   cursor: grab;
 }
 #pet.dragging { cursor: grabbing; }
+#pet.scaling { cursor: ns-resize; }        /* 右键上下拖动缩放中 */
 
 #pet-body {
   width: 100%;

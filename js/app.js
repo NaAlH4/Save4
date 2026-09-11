@@ -293,6 +293,21 @@
         if (mode === 'pet') placeStrip();
       }
     });
+    // 按住右键上下拖动缩放桌宠（右键单击仍呼出菜单）
+    drag.makeRightDragScale(els.pet, {
+      ratioOf: currentRatio, minW: skin().minW, maxW: skin().maxW,
+      minH: 90, maxH: 420, span: 300,
+      onResize: function (w, h) {
+        petGeo.w = w; petGeo.h = h;
+        if (mode === 'pet') placeStrip();
+      },
+      onEnd: function (w, h) {
+        petGeo.w = w; petGeo.h = h;
+        store.write(K.PET_GEO, petGeo);
+        if (mode === 'pet') placeStrip();
+      },
+      onRightClick: function (x, y) { showMenu(x, y); }
+    });
     // 面板移动（用标题栏作拖拽手柄）
     drag.makeDraggable(els.panel, {
       handle: els.panelHeader,
@@ -352,11 +367,10 @@
     els.strip.addEventListener('click', function () { setMode('full'); });
     // 托盘：恢复
     els.tray.addEventListener('click', function () { setMode('pet'); });
-    // 右键菜单打开/关闭 + 菜单项点击
-    els.pet.addEventListener('contextmenu', function (e) {
-      e.preventDefault();
-      showMenu(e.clientX, e.clientY);
-    });
+    // 右键菜单：只屏蔽原生菜单
+    // （菜单的呼出改由 makeRightDragScale 的「右键单击且未移动」回调负责，
+    //   这样右键上下拖动可用于缩放，不会误弹菜单）
+    els.pet.addEventListener('contextmenu', function (e) { e.preventDefault(); });
     $('menu').addEventListener('click', onMenuClick);   // 菜单项点击
     document.addEventListener('click', function (e) {
       if (!e.target.closest('#menu')) hideMenu();

@@ -120,10 +120,89 @@
     window.addEventListener('pointercancel', up);
   }
 
+  /* ---------- 按住右键上下拖动缩放 ----------
+     手势：右键按住并上下移动 = 缩放（上移变大 / 下移变小）；
+           右键单击（未移动超过阈值）= 触发菜单（onRightClick）。
+     采用「比例缩放」，手感与当前大小无关：上移 span 像素约放大一倍。
+     opts:
+       ratioOf     : function → 当前宽高比(宽/高)，缩放时保持比例
+       minW/maxW/minH/maxH, span(默认300), threshold(默认6)
+       onResize(w,h) / onEnd(w,h) / onRightClick(x,y) / onStateChange(moving) */
+  function makeRightDragScale(el, opts) {
+    opts = opts || {};
+    var active = false, moved = false;
+    var startX = 0, startY = 0, baseW = 0, baseH = 0;
+    var THRESHOLD = opts.threshold || 6;
+    var SPAN = opts.span || 300;
+
+    function pointerDown(e) {
+      if (typeof e.button === 'number' && e.button !== 2) return;   // 只响应右键
+      if (e.target && e.target.closest && e.target.closest('.no-drag')) return;
+      active = true;
+      moved = false;
+      startX = e.clientX;
+      startY = e.clientY;
+      baseW = el.offsetWidth;
+      baseH = el.offsetHeight;
+      try { el.setPointerCapture(e.pointerId); } catch (err) {}
+      e.preventDefault();
+    }
+
+    function pointerMove(e) {
+      if (!active) return;
+      var dx = e.clientX - startX;
+      var dy = e.clientY - startY;
+      if (!moved) {
+        if (Math.abs(dx) + Math.abs(dy) < THRESHOLD) return;   // 还没越过阈值
+        moved = true;
+        el.classList.add('scaling');
+        if (opts.onStateChange) opts.onStateChange(true);
+      }
+      var ratio = opts.ratioOf ? opts.ratioOf() : 1;
+      if (ratio == null) ratio = 1;
+      // 向上移动(dy<0) → factor>1 变大
+      var factor = 1 - dy / SPAN;
+      var w = clamp(Math.round(baseW * factor), opts.minW || 60, opts.maxW || 600);
+      var h = clamp(Math.round(w / ratio), opts.minH || 60, opts.maxH || 900);
+      w = Math.round(h * ratio);                                // 回算，保证精确比例
+      el.style.width = w + 'px';
+      el.style.height = h + 'px';
+      if (opts.onResize) opts.onResize(w, h);
+      e.preventDefault();
+    }
+
+    function pointerUp(e) {
+      if (!active) return;
+      active = false;
+      el.classList.remove('scaling');
+      try { el.releasePointerCapture(e.pointerId); } catch (err) {}
+      if (moved) {
+        if (opts.onStateChange) opts.onStateChange(false);
+        if (opts.onEnd) opts.onEnd(el.offsetWidth, el.offsetHeight);
+      } else if (opts.onRightClick) {
+        // 右键单击且未移动 → 视为呼出菜单
+        opts.onRightClick(e.clientX, e.clientY);
+      }
+    }
+
+    el.addEventListener('pointerdown', pointerDown);
+    el.addEventListener('pointermove', pointerMove);
+    window.addEventListener('pointerup', pointerUp);
+    window.addEventListener('pointercancel', function (e) {
+      if (!active) return;
+      active = false;
+      el.classList.remove('scaling');
+      if (moved && opts.onStateChange) opts.onStateChange(false);
+    });
+    // 右键手势期间抑制原生菜单（菜单由 onRightClick 自行呼出）
+    el.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+  }
+
   global.Save4 = global.Save4 || {};
   global.Save4.drag = {
     makeDraggable: makeDraggable,
     makeResizable: makeResizable,
+    makeRightDragScale: makeRightDragScale,
     clamp: clamp
   };
 })(window);
