@@ -132,52 +132,148 @@
     });
   }
 
-  /* 提取消息中的「最小行动」文本；若无则返回 null */
-  function extractAction(content) {
-    var t = String(content || '');
-    // 匹配 【最小行动】... 或 「最小行动」之后的文本
-    var m = t.match(/(?:【最小行动】|\[最小行动\]|最小行动)[：:]\s*([\s\S]{2,})/);
-    if (m) return m[1].trim().slice(0, 120);
-    // 兜底：取最后一句非空行
-    var lines = t.split('\n').map(function (l) { return l.trim(); }).filter(Boolean);
-    if (lines.length) return lines[lines.length - 1].slice(0, 120);
-    return null;
+  /* 把一段文本切成句子（保留句末标点与换行），供「右键某句话」定位 */
+  function splitSentences(text) {
+    var s = String(text || '');
+    var out = [], buf = '';
+    var ENDS = '。！？!?；;\n';
+    for (var i = 0; i < s.length; i++) {
+      buf += s[i];
+      if (ENDS.indexOf(s[i]) >= 0) { out.push(buf); buf = ''; }
+    }
+    if (buf) out.push(buf);
+    return out;
   }
 
-  function msgHTML(msg) {
-    var cls = msg.role === 'user' ? 'msg-user' : 'msg-ai';
-    var avatar = msg.role === 'user' ? '🧑' : '🐾';
-    var html = '<div class="msg ' + cls + '"><div class="msg-av">' + avatar + '</div>'
+  /* 助手回复：按句渲染，每句带 data-si 以便右键定位（用户消息按原文） */
+  function assistantHTML(content) {
+    return splitSentences(content).map(function (p, si) {
+      if (!p.trim()) return esc(p);            // 纯空白不参与交互
+      return '<span class="sent" data-si="' + si + '">' + esc(p) + '</span>';
+    }).join('');
+  }
+
+  function msgHTML(msg, mi) {
+    var isUser = msg.role === 'user';
+    var cls = isUser ? 'msg-user' : 'msg-ai';
+    var avatar = isUser ? '🧑' : '🐾';
+    var html = '<div class="msg ' + cls + '" data-mi="' + mi + '">'
+             + '<div class="msg-av">' + avatar + '</div>'
              + '<div class="msg-bubble">';
     // 思考过程（可折叠展示）
     if (msg.reasoning) {
       html += '<details class="reasoning"><summary>💭 思考过程</summary>'
             + '<div class="reasoning-body">' + esc(msg.reasoning) + '</div></details>';
     }
-    html += esc(msg.content);
-    // 助手消息：若含「最小行动」，提供一键加入待办
-    if (msg.role !== 'user') {
-      var action = extractAction(msg.content);
-      if (action) {
-        html += '<button class="add-todo-btn" data-add-todo="' + esc(action) + '">➕ 最小行动 → 加入待办</button>';
-      }
-    }
+    // 不再自动挂「加入待办」按钮：改由 ① 用户说「加入待办」② 右键某句话 触发
+    html += isUser ? esc(msg.content) : assistantHTML(msg.content);
     html += '</div></div>';
     return html;
   }
 
+  /* 清理待办文本里的标记词（如【最小行动】），让待办读起来更干净 */
+  function cleanTodoText(t) {
+    return String(t || '')
+      .replace(/^\s*[【\[「]?\s*最小行动\s*[】\]」]?\s*[：:、,，\-—]?\s*/, '')
+      .replace(/^\s*[【\[「]?\s*下一步\s*[】\]」]?\s*[：:、,，\-—]?\s*/, '')
+      .trim();
+  }
+
   /* 把一段文本加入待办（默认无提醒，可后续加） */
   function addToTodo(text) {
-    if (!text || !global.Save4.todos) return;
-    global.Save4.todos.addTodo({ text: text, remindAt: null, repeat: 'none' });
-    global.Save4.bubble.enqueue({ text: '✅ 已加入待办：' + text.slice(0, 30) });
+    var t = cleanTodoText(text);
+    if (!t || !global.Save4.todos) return false;
+    global.Save4.todos.addTodo({ text: t, remindAt: null, repeat: 'none' });
+    global.Save4.bubble.enqueue({ text: '✅ 已加入待办：' + t.slice(0, 30) });
+    return true;
+  }
+
+  /* ══════════ 句子浮层：右键 AI 回复的某句话 → 加入待办 ══════════ */
+  var pendingSent = '';
+
+  function hideSentMenu() {
+    if (els.sentMenu) els.sentMenu.classList.add('hidden');
+    pendingSent = '';
+  }
+
+  function showSentMenu(x, y, text) {
+    if (!els.sentMenu) return;
+    pendingSent = text;
+    els.sentMenu.classList.remove('hidden');
+    var wrap = els.chat.getBoundingClientRect();
+    var mw = els.sentMenu.offsetWidth, mh = els.sentMenu.offsetHeight;
+    var left = Math.max(4, Math.min(x - wrap.left, wrap.width - mw - 4));
+    var top = Math.max(4, Math.min(y - wrap.top, wrap.height - mh - 4));
+    els.sentMenu.style.left = left + 'px';
+    els.sentMenu.style.top = top + 'px';
+  }
+
+  /* 右键：命中某句 → 该句；命中助手气泡空白 → 整条回复；其他 → 不弹 */
+  function onBodyContextMenu(e) {
+    e.preventDefault();
+    var sentEl = e.target.closest && e.target.closest('.sent');
+    if (sentEl) {
+      var msgEl = sentEl.closest('.msg');
+      var mi = msgEl ? Number(msgEl.dataset.mi) : NaN;
+      var si = Number(sentEl.dataset.si);
+      var m = messages[mi];
+      if (m && !isNaN(si)) {
+        var parts = splitSentences(m.content);
+        var text = (parts[si] || '').trim();
+        if (text) { showSentMenu(e.clientX, e.clientY, text); return; }
+      }
+      return;
+    }
+    var bubbleMsg = e.target.closest && e.target.closest('.msg-ai');
+    if (bubbleMsg) {
+      var i2 = Number(bubbleMsg.dataset.mi);
+      var mm = messages[i2];
+      if (mm && String(mm.content || '').trim()) {
+        showSentMenu(e.clientX, e.clientY, String(mm.content).trim().slice(0, 120));
+      }
+      return;
+    }
+    hideSentMenu();
+  }
+
+  /* ══════════ 「加入待办」指令识别 ══════════ */
+  // 支持「加入待办 / 加到待办 / 加入代办(常见误写) / 记到待办 / 加个待办」等说法
+  var TODO_TRIGGER = /(加入待办|加到待办|加进待办|加入代办|加到代办|加个待办|新增待办|添加待办|添加到待办|记到待办|记入待办|加入\s*todo|add\s*to\s*todo)/i;
+
+  /* 取上一条 AI 回复里的「最小行动」句子（作为指令未带内容时的兜底） */
+  function lastAssistantAction() {
+    for (var i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role !== 'assistant') continue;
+      var parts = splitSentences(messages[i].content).map(function (p) { return p.trim(); }).filter(Boolean);
+      for (var j = 0; j < parts.length; j++) {
+        if (/最小行动|下一步|先做|行动/.test(parts[j])) return parts[j].slice(0, 120);
+      }
+      if (parts.length) return parts[parts.length - 1].slice(0, 120);
+      return null;
+    }
+    return null;
+  }
+
+  /* 若用户这句话是「加入待办」指令 → 返回要加入的内容 */
+  function parseTodoCommand(text) {
+    var m = String(text || '').match(TODO_TRIGGER);
+    if (!m) return null;
+    var rest = String(text).slice(m.index + m[0].length)
+      .replace(/^[\s:：,，、。.\-—]+/, '')
+      .replace(/^(把|帮我|请|麻烦|给我)\s*/, '')
+      .trim();
+    if (rest.length >= 2) return rest.slice(0, 120);
+    var fallback = lastAssistantAction();
+    return fallback || null;
   }
 
   function render() {
-    els.body.innerHTML = messages.map(msgHTML).join('') || '<div class="chat-empty dim">'
+    els.body.innerHTML = messages.map(function (m, i) { return msgHTML(m, i); }).join('')
+      || '<div class="chat-empty dim">'
       + (configReady() ? '点击桌宠说点什么吧～' : '请先在 设置 → AI 对话 里填入接口地址和模型')
       + '</div>';
     els.body.scrollTop = els.body.scrollHeight;
+    hideSentMenu();
   }
 
   /* ══════════ 摘要生成（对话结束后调用，作长期记忆） ══════════ */
@@ -208,6 +304,18 @@
     if (sending) return;
     text = String(text || '').trim();
     if (!text) return;
+
+    // ① 指令：用户明确说「加入待办」等 → 直接加入，不再请求 AI
+    var cmd = parseTodoCommand(text);
+    if (cmd) {
+      pushMsg('user', text);
+      addToTodo(cmd);
+      pushMsg('assistant', '✅ 已加入待办：' + cmd);
+      render();
+      els.input.value = '';
+      return;
+    }
+
     if (!configReady()) {
       els.body.innerHTML = '<div class="chat-empty dim">请先在 设置 → AI 对话 配置接口地址与模型后再聊～</div>';
       return;
@@ -317,6 +425,7 @@
       };
       db.save(item);
     }
+    hideSentMenu();
     els.chat.classList.add('hidden');
   }
 
@@ -357,19 +466,31 @@
     document.getElementById('chat-clear').addEventListener('click', newConv);
     document.getElementById('chat-history').addEventListener('click', toggleHistory);
 
-    // 正文：委托处理「加入待办」按钮
-    els.body.addEventListener('click', function (e) {
-      var btn = e.target.closest && e.target.closest('[data-add-todo]');
-      if (!btn) return;
-      var text = btn.getAttribute('data-add-todo');
-      addToTodo(text);
+    // ② 右键 AI 回复的某句话 → 浮层「加入待办」
+    els.sentMenu = document.getElementById('chat-sent-menu');
+    els.sentBtn = document.getElementById('chat-sent-todo');
+    els.body.addEventListener('contextmenu', onBodyContextMenu);
+    els.sentBtn.addEventListener('click', function () {
+      if (pendingSent) addToTodo(pendingSent);
+      hideSentMenu();
     });
+    // 浮层内的右键/点击不应穿透为新的右键判定
+    els.sentMenu.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+    els.sentMenu.addEventListener('click', function (e) { e.stopPropagation(); });
+    // 点击别处 / Esc / 滚动正文 → 收起浮层
+    document.addEventListener('click', function (e) {
+      if (!e.target.closest || !e.target.closest('#chat-sent-menu')) hideSentMenu();
+    });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') hideSentMenu();
+    });
+    els.body.addEventListener('scroll', hideSentMenu);
 
     // 拖拽（标题栏移动；模式按钮/输入栏等交互区排除在外）
     if (drag) {
       drag.makeDraggable(els.chat, {
         handle: document.getElementById('chat-header'),
-        ignore: '.chat-mode, .chat-actions, .chat-inputbar, .chat-history-panel',
+        ignore: '.chat-mode, .chat-actions, .chat-inputbar, .chat-history-panel, .sent-menu',
         onMove: dragOpts && dragOpts.onMove,
         onEnd: dragOpts && dragOpts.onEnd
       });

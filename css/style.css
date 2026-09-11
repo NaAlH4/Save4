@@ -547,21 +547,6 @@ body:not([data-mode]) #tray { display: none; }
   white-space: pre-wrap;
   word-break: break-word;
 }
-/* 「最小行动 → 加入待办」按钮 */
-.add-todo-btn {
-  display: inline-block;
-  margin-top: 8px;
-  border: 1px solid var(--accent);
-  background: var(--accent-soft);
-  color: var(--ink);
-  border-radius: 999px;
-  padding: 5px 12px;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all .15s;
-}
-.add-todo-btn:hover { background: var(--accent); color: #fff; }
 .chat-inputbar {
   flex: none;
   display: flex;
@@ -601,6 +586,30 @@ body:not([data-mode]) #tray { display: none; }
   z-index: 5;
 }
 .chip-hist-title { font-weight: 700; font-size: 12.5px; margin-bottom: 6px; color: var(--ink); }
+/* 句子级操作（右键 AI 回复某句 → 加入待办） */
+.msg-ai .sent { border-radius: 4px; cursor: context-menu; }
+.msg-ai .sent:hover { background: #fff3d9; }
+.sent-menu {
+  position: absolute;
+  z-index: 8;
+  background: #fffdf9;
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+  padding: 3px;
+}
+.sent-menu.hidden { display: none; }
+.sent-menu button {
+  border: none;
+  background: transparent;
+  color: var(--ink);
+  font-size: 12.5px;
+  padding: 6px 12px;
+  border-radius: 7px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.sent-menu button:hover { background: var(--accent-soft); }
 .chat-history-list { display: flex; flex-direction: column; gap: 6px; }
 .hist-row {
   position: relative;
