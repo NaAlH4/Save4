@@ -263,12 +263,17 @@
         <div id="skin-preview-wrap" class="skin-preview-wrap hidden">
           <canvas id="skin-preview" class="skin-preview"></canvas>
           <div class="skin-side">
-            <label class="skin-tol-label">抠图强度
+            <div class="skin-mode">
+              <label><input type="radio" name="skinMode" value="auto" checked> 自动抠图</label>
+              <label><input type="radio" name="skinMode" value="none"> 保留原图（不抠图）</label>
+            </div>
+            <label class="skin-tol-label" id="skin-tol-row">抠图强度
               <input id="skin-tolerance" type="range" min="10" max="140" value="60">
               <span id="skin-tol-val" class="dim">60</span>
             </label>
             <div id="skin-info" class="dim"></div>
-            <p class="dim skin-tip">背景没抠干净 → 调高强度；主体被抠掉 → 调低强度。</p>
+            <p class="dim skin-tip">导入透明背景的图片会<b>自动选「保留原图」</b>。<br>
+              背景没抠干净 → 调高强度；主体被抠掉 → 调低强度。</p>
           </div>
         </div>
       </fieldset>

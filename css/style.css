@@ -649,16 +649,19 @@ body:not([data-mode]) #tray { display: none; }
   object-fit: contain;
   border: 1px solid var(--accent-soft);
   border-radius: 10px;
-  /* 棋盘格底纹，便于看清透明区域 */
+  /* 灰白棋盘格：便于一眼看出哪些是透明区域（白≠透明） */
+  background-color: #ffffff;
   background-image:
-    linear-gradient(45deg, #eee 25%, transparent 25%),
-    linear-gradient(-45deg, #eee 25%, transparent 25%),
-    linear-gradient(45deg, transparent 75%, #eee 75%),
-    linear-gradient(-45deg, transparent 75%, #eee 75%);
+    linear-gradient(45deg, #d5d5d5 25%, transparent 25%),
+    linear-gradient(-45deg, #d5d5d5 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #d5d5d5 75%),
+    linear-gradient(-45deg, transparent 75%, #d5d5d5 75%);
   background-size: 12px 12px;
   background-position: 0 0, 0 6px, 6px -6px, -6px 0;
 }
 .skin-side { flex: 1; min-width: 0; font-size: 12px; }
+.skin-mode { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; }
+.skin-mode label { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
 .skin-tol-label { display: flex; align-items: center; gap: 6px; font-size: 12px; }
 .skin-tol-label input[type="range"] { flex: 1; min-width: 60px; accent-color: var(--accent); }
 .skin-tip { margin: 6px 0 0; line-height: 1.5; }
