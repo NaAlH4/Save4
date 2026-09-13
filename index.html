@@ -62,6 +62,8 @@
     <!-- 图片形象层（皮肤切换用，默认隐藏；SVG 猫与各立绘互斥显示） -->
     <img id="pet-img" src="flipped_cut.png" alt="Save4 桌宠" draggable="false">
     <img id="pet-img-liuge" src="liuge.png" alt="刘哥 桌宠" draggable="false">
+    <!-- 自定义形象层：src 由 skin.js 从本地存储注入 -->
+    <img id="pet-img-custom" alt="自定义桌宠" draggable="false">
     </div><!-- /#pet-body -->
 
     <!-- 右下角缩放手柄 -->
@@ -245,6 +247,30 @@
         <label><input type="radio" name="petSkin" value="cat"> 几何小猫</label>
         <label><input type="radio" name="petSkin" value="anime"> 动漫小人（立绘）</label>
         <label id="skin-opt-liuge"><input type="radio" name="petSkin" value="liuge"> 刘哥（点赞）</label>
+        <label id="skin-opt-custom" style="display:none"><input type="radio" name="petSkin" value="custom"> 自定义（我的图片）</label>
+      </fieldset>
+
+      <fieldset>
+        <legend>自定义桌宠形象</legend>
+        <p class="dim">导入一张图片，自动去掉背景、把主体作为桌宠形象（建议：主体清晰、背景较干净）。
+          处理全部在本机完成，图片不会上传。</p>
+        <div class="skin-import">
+          <button id="btn-skin-pick" type="button" class="mini-btn primary">📁 选择图片…</button>
+          <button id="btn-skin-save" type="button" class="mini-btn" disabled>保存为桌宠</button>
+          <button id="btn-skin-del" type="button" class="mini-btn danger">删除</button>
+          <input id="skin-file" type="file" accept="image/*" hidden>
+        </div>
+        <div id="skin-preview-wrap" class="skin-preview-wrap hidden">
+          <canvas id="skin-preview" class="skin-preview"></canvas>
+          <div class="skin-side">
+            <label class="skin-tol-label">抠图强度
+              <input id="skin-tolerance" type="range" min="10" max="140" value="60">
+              <span id="skin-tol-val" class="dim">60</span>
+            </label>
+            <div id="skin-info" class="dim"></div>
+            <p class="dim skin-tip">背景没抠干净 → 调高强度；主体被抠掉 → 调低强度。</p>
+          </div>
+        </div>
       </fieldset>
 
       <fieldset>
@@ -316,6 +342,7 @@
   <script src="js/journal.js"></script>
   <script src="js/dataio.js"></script>
   <script src="js/chat.js"></script>
+  <script src="js/skin.js"></script>
   <script src="js/app.js"></script>
   <script src="js/desktop.js"></script>
 </body>

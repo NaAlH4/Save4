@@ -70,7 +70,8 @@ body {
 }
 /* 图片皮肤（各立绘）：默认隐藏，切换到对应 data-skin 后显示 */
 #pet-img,
-#pet-img-liuge {
+#pet-img-liuge,
+#pet-img-custom {
   display: none;
   width: 100%;
   height: 100%;
@@ -82,11 +83,13 @@ body {
   filter: drop-shadow(0 10px 14px rgba(40,60,110,.25));
 }
 
-/* 皮肤切换：cat=SVG 猫；anime / liuge 各显示其图片层 */
-body[data-skin="anime"] #pet-svg      { display: none; }
+/* 皮肤切换：cat=SVG 猫；anime / liuge / custom 各显示其图片层 */
+body[data-skin="anime"] #pet-svg       { display: none; }
 body[data-skin="anime"] #pet-img       { display: block; }
 body[data-skin="liuge"] #pet-svg       { display: none; }
 body[data-skin="liuge"] #pet-img-liuge { display: block; }
+body[data-skin="custom"] #pet-svg        { display: none; }
+body[data-skin="custom"] #pet-img-custom { display: block; }
 
 /* 呼吸浮动动画作用于整个形象层（两种皮肤通用） */
 #pet-body { animation: idle-bob 3.2s ease-in-out infinite; }
@@ -634,6 +637,32 @@ body:not([data-mode]) #tray { display: none; }
   padding: 2px;
 }
 .hist-del:hover { color: #e2574c; }
+
+/* ══════════ 自定义桌宠形象（skin.js） ══════════ */
+.skin-import { display: flex; gap: 8px; flex-wrap: wrap; margin: 6px 0 2px; }
+.skin-preview-wrap { display: flex; gap: 12px; align-items: flex-start; margin-top: 10px; }
+.skin-preview-wrap.hidden { display: none; }
+.skin-preview {
+  flex: none;
+  width: 110px;
+  max-height: 150px;
+  object-fit: contain;
+  border: 1px solid var(--accent-soft);
+  border-radius: 10px;
+  /* 棋盘格底纹，便于看清透明区域 */
+  background-image:
+    linear-gradient(45deg, #eee 25%, transparent 25%),
+    linear-gradient(-45deg, #eee 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #eee 75%),
+    linear-gradient(-45deg, transparent 75%, #eee 75%);
+  background-size: 12px 12px;
+  background-position: 0 0, 0 6px, 6px -6px, -6px 0;
+}
+.skin-side { flex: 1; min-width: 0; font-size: 12px; }
+.skin-tol-label { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+.skin-tol-label input[type="range"] { flex: 1; min-width: 60px; accent-color: var(--accent); }
+.skin-tip { margin: 6px 0 0; line-height: 1.5; }
+#skin-info { margin-top: 6px; }
 
 /* ══════════ AI 设置区（M5:模型胶囊/角色卡/画像） ══════════ */
 .ai-hint { margin: 6px 0; font-size: 12px; }

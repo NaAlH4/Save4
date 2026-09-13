@@ -19,6 +19,7 @@
   var dataio = global.Save4.dataio;
   var chat = global.Save4.chat;
   var journal = global.Save4.journal;
+  var skinMod = global.Save4.skin;   // 自定义形象模块（注意勿与下方 skin() 函数重名）
   var K = store.KEYS;
 
   var petGeo, panelGeo, mode;
@@ -26,7 +27,8 @@
   var prevModeBeforeHide = 'full'; // Electron 托盘隐藏前的模式
   var tabs = null, panes = {};      // 面板页签缓存
 
-  /* 皮肤定义：cat=SVG 猫(方形)，anime=立绘(竖版)，liuge=刘哥点赞 */
+  /* 皮肤定义：cat=SVG 猫(方形)，anime=立绘(竖版)，liuge=刘哥点赞
+     custom=用户导入的图片（运行时由 skin.js 注册） */
   var SKINS = {
     cat:   { ratio: 1,     defW: 150, defH: 150, minW: 90,  maxW: 300 },
     anime: { ratio: 0.732, defW: 150, defH: 205, minW: 90,  maxW: 300 },
@@ -35,6 +37,21 @@
   var skinKey = 'cat';
   function skin() { return SKINS[skinKey] || SKINS.cat; }
   function currentRatio() { return skin().ratio; }
+
+  /* 注册/注销「自定义形象」皮肤（供 skin.js 调用） */
+  function registerCustomSkin(meta) {
+    if (!meta || !meta.ratio || !isFinite(meta.ratio)) { delete SKINS.custom; return; }
+    var ratio = Math.max(0.2, Math.min(5, meta.ratio));
+    var s = { ratio: ratio, minW: 90, maxW: 320 };
+    // 默认尺寸：长边约 170px，保持图片比例
+    if (ratio >= 1) { s.defW = 170; s.defH = Math.round(170 / ratio); }
+    else { s.defH = 170; s.defW = Math.round(170 * ratio); }
+    SKINS.custom = s;
+  }
+  function unregisterCustomSkin() {
+    delete SKINS.custom;
+    if (skinKey === 'custom') selectSkin('cat');
+  }
 
   /* ══════════ 工具 ══════════ */
   function $(id) { return document.getElementById(id); }
@@ -156,6 +173,19 @@
     }
   }
 
+  /* 同步皮肤单选按钮的选中态 */
+  function syncSkinRadios() {
+    var rs = document.querySelectorAll('input[name="petSkin"]');
+    rs.forEach(function (r) { r.checked = (r.value === skinKey); });
+  }
+
+  /* 选择皮肤（持久化 + 应用 + 同步 UI），供 skin.js 保存自定义形象后调用 */
+  function selectSkin(key) {
+    store.write(K.SKIN, validSkin(key));
+    applySkin(key, true);
+    syncSkinRadios();
+  }
+
   /* ══════════ 设置对话框 ══════════ */
   function initSettings() {
     var dlg = els.settings;
@@ -164,10 +194,7 @@
     skinRadios.forEach(function (r) {
       r.checked = (r.value === skinKey);
       r.addEventListener('change', function () {
-        if (r.checked) {
-          store.write(K.SKIN, r.value);
-          applySkin(r.value, true);
-        }
+        if (r.checked) selectSkin(r.value);
       });
     });
     // 收起条内容
@@ -429,6 +456,10 @@
     els.panelHeader = $('panel-header');
     els.settings = $('settings-dialog');
 
+    // 先初始化自定义形象：它会把已保存的图片注册为 custom 皮肤，
+    // 因此必须早于下面的皮肤读取（否则上次选了 custom 会回退成小猫）
+    if (skinMod) skinMod.init();
+
     // 恢复皮肤（影响 pet 默认比例/尺寸）
     skinKey = validSkin(store.read(K.SKIN, 'cat'));
     document.body.setAttribute('data-skin', skinKey);
@@ -498,10 +529,14 @@
     boot();
   }
 
-  // 暴露给其他模块（如 reminder 需要把 hidden 恢复为 pet）
+  // 暴露给其他模块（如 reminder 需要把 hidden 恢复为 pet；skin 需要注册自定义皮肤）
   global.Save4.app = {
     setMode: setMode,
     restoreFromTray: restoreFromTray,
-    getMode: function () { return mode; }
+    getMode: function () { return mode; },
+    registerCustomSkin: registerCustomSkin,
+    unregisterCustomSkin: unregisterCustomSkin,
+    selectSkin: selectSkin,
+    getSkin: function () { return skinKey; }
   };
 })(window);
