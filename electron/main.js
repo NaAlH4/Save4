@@ -8,7 +8,7 @@
 'use strict';
 
 const { app, BrowserWindow, Tray, Menu, Notification, ipcMain,
-        nativeImage, protocol, screen, dialog } = require('electron');
+        nativeImage, protocol, screen, dialog, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { Readable } = require('stream');
@@ -230,7 +230,29 @@ ipcMain.handle('game:wallpaper', () => {
   return { ok: true, url: 'app://' + HOST + '/__wallpaper', name: path.basename(wp.path) };
 });
 
-/* ---------- 桌面贪吃蛇：枚举桌面图标（读取真实文件图标，只读不改动） ---------- */
+/* ---------- 桌面贪吃蛇：枚举桌面图标（读取真实文件图标，只读不改动） ----------
+   ⚠ 关键：桌面条目大多是 .lnk 快捷方式，直接对 .lnk 调 getFileIcon 只会得到
+   统一的「通用快捷方式」图标（实测 10/10 完全相同）。必须先 readShortcutLink
+   解析出目标（或自定义图标），再取目标的图标，才能得到各自真实图标。 */
+function readDesktopIconSize() {
+  return new Promise((resolve) => {
+    let execFile;
+    try { execFile = require('child_process').execFile; } catch (e) { return resolve(48); }
+    try {
+      execFile('reg',
+        ['query', 'HKCU\\Software\\Microsoft\\Windows\\Shell\\Bags\\1\\Desktop', '/v', 'IconSize'],
+        { timeout: 2500, windowsHide: true },
+        (err, stdout) => {
+          if (err || !stdout) return resolve(48);
+          const m = /IconSize\s+REG_DWORD\s+0x([0-9a-f]+)/i.exec(stdout);
+          if (!m) return resolve(48);
+          const v = parseInt(m[1], 16);
+          resolve(v >= 24 && v <= 160 ? v : 48);   // 合理区间外按默认 48
+        });
+    } catch (e) { resolve(48); }
+  });
+}
+
 ipcMain.handle('game:icons', async () => {
   const dirs = [];
   try { dirs.push(app.getPath('desktop')); } catch (e) {}
@@ -245,15 +267,27 @@ ipcMain.handle('game:icons', async () => {
       if (out.length >= LIMIT) break;
       if (ent.name === 'desktop.ini') continue;
       const full = path.join(dir, ent.name);
+      const isLink = /\.lnk$/i.test(ent.name);
+      let src = full;
+      if (isLink) {
+        try {
+          const s = shell.readShortcutLink(full);
+          src = (s.icon && String(s.icon).trim()) ? s.icon : (s.target || full);
+        } catch (e) { src = full; }
+      }
       let icon = '';
       try {
-        const img = await app.getFileIcon(full, { size: 'normal' });
+        const img = await app.getFileIcon(src, { size: 'normal' });
         icon = img.toDataURL();
       } catch (e) { icon = ''; }
-      out.push({ name: ent.name, isDir: ent.isDirectory(), icon: icon });
+      if (!icon && src !== full) {           // 目标图标取不到 → 退回原路径
+        try { icon = (await app.getFileIcon(full, { size: 'normal' })).toDataURL(); } catch (e) {}
+      }
+      out.push({ name: ent.name, isDir: ent.isDirectory(), isLink: isLink, icon: icon });
     }
   }
-  return out;
+  const iconSize = await readDesktopIconSize();
+  return { icons: out, iconSize: iconSize };
 });
 
 /* ---------- 游戏需要键盘焦点：暂时关掉点击穿透并抢焦点 ---------- */

@@ -14,7 +14,8 @@
   var S = function () { return global.Save4.store; };
   var BEST_KEY = 'game.snake.best';
 
-  var CELL = 56;            // 每格像素（比初版更大，便于容纳图标+文件名）
+  var ICON_DEFAULT = 48;    // 桌面图标默认尺寸（注册表读不到时用）
+  var CELL = 72;            // 每格像素 = 图标尺寸 + 24（留给文件名），启动时按实际图标尺寸重算
   var BASE_MS = 150;        // 基础步进间隔
   var MIN_MS = 70;          // 最快间隔
   var RAMP_EVERY = 5;       // 每吃几颗提速一次
@@ -168,14 +169,19 @@
   function loadIcons() {
     var desk = global.Save4Desktop;
     if (desk && desk.isDesktop && desk.listDesktopIcons) {
-      return desk.listDesktopIcons().then(function (list) {
-        var arr = (list || []).filter(function (x) { return x && x.name; })
+      return desk.listDesktopIcons().then(function (res) {
+        // 主进程返回 { icons:[...], iconSize:49 }
+        var list = Array.isArray(res) ? res : (res && res.icons) || [];
+        var size = (res && !Array.isArray(res) && res.iconSize) || ICON_DEFAULT;
+        var arr = list.filter(function (x) { return x && x.name; })
           .slice(0, MAX_ICONS)
-          .map(function (x) { return { name: x.name, icon: x.icon || '' }; });
-        return arr.length ? arr : fallbackIcons();
-      }).catch(function () { return fallbackIcons(); });
+          .map(function (x) {
+            return { name: x.name, icon: x.icon || '', isLink: !!x.isLink, isDir: !!x.isDir };
+          });
+        return { icons: arr.length ? arr : fallbackIcons(), iconSize: size };
+      }).catch(function () { return { icons: fallbackIcons(), iconSize: ICON_DEFAULT }; });
     }
-    return Promise.resolve(fallbackIcons());
+    return Promise.resolve({ icons: fallbackIcons(), iconSize: ICON_DEFAULT });
   }
 
   function fallbackIcons() {
@@ -215,6 +221,10 @@
   function layout() {
     var W = window.innerWidth, H = window.innerHeight;
     var cell = CELL;
+    // 把尺寸通过 CSS 变量下发，图标大小、格子网格线都用它
+    els.board.style.setProperty('--cell', cell + 'px');
+    els.board.style.setProperty('--icon-size', Math.round(cell - 24) + 'px');
+    els.board.style.setProperty('--seg-icon', Math.round((cell - 24) * 0.78) + 'px');
     var cols = Math.max(8, Math.floor((W - 24) / cell));
     var rows = Math.max(6, Math.floor((H - 96) / cell));
     var bw = cols * cell, bh = rows * cell;
@@ -248,11 +258,14 @@
     while (segNodes.length < bodyLen) {
       var d = document.createElement('div');
       d.className = 'seg';
-      d.innerHTML = '<img class="seg-icon" alt="" draggable="false">'
+      d.innerHTML = '<div class="icon-wrap">'
+                  + '<img class="seg-icon" alt="" draggable="false">'
                   + '<span class="seg-emoji"></span>'
-                  + '<span class="seg-name"></span>';
+                  + '<span class="seg-badge lnk-badge"></span>'
+                  + '</div><span class="seg-name"></span>';
       d._img = d.querySelector('.seg-icon');
       d._emoji = d.querySelector('.seg-emoji');
+      d._badge = d.querySelector('.seg-badge');
       d._name = d.querySelector('.seg-name');
       els.board.appendChild(d);
       segNodes.push(d);
@@ -292,6 +305,7 @@
       els.foodImg.style.display = 'none';
     }
     els.foodName.textContent = item.name || '';
+    els.foodBadge.style.display = item.isLink ? '' : 'none';
     els.food.title = item.name || '';
   }
 
@@ -315,6 +329,7 @@
       node._emoji.style.display = 'none';
     }
     node._name.textContent = item ? (item.name || '') : '';
+    node._badge.style.display = (item && item.isLink) ? '' : 'none';
     if (item) node.title = item.name || '';
   }
 
@@ -450,11 +465,14 @@
     els.over.classList.add('hidden');
     els.pauseHint.textContent = '加载图标中…';
     els.head.style.backgroundImage = 'url("' + headImageUrl() + '")';
-    layout();
 
     loadWallpaper();
-    loadIcons().then(function (list) {
-      icons = list;
+    loadIcons().then(function (res) {
+      icons = res.icons;
+      // 按桌面真实的图标尺寸决定格子大小（每格 = 图标 + 24px 留给文件名）
+      CELL = Math.round((res.iconSize || ICON_DEFAULT)) + 24;
+      layout();
+
       st = core.makeState(geo.cols, geo.rows, icons.length);
       segNodes.forEach(function (n) { n.remove(); });
       segNodes = [];
@@ -496,6 +514,7 @@
     els.foodImg = document.getElementById('game-food-img');
     els.foodEmoji = document.getElementById('game-food-emoji');
     els.foodName = document.getElementById('game-food-name');
+    els.foodBadge = document.getElementById('game-food-badge');
     els.score = document.getElementById('game-score');
     els.remain = document.getElementById('game-remain');
     els.time = document.getElementById('game-time');
