@@ -258,6 +258,22 @@
 
     <div id="game-count" class="game-count hidden"></div>
 
+    <!-- 开局设置：选择豆子数量 -->
+    <div id="game-start" class="game-start hidden">
+      <div class="over-card">
+        <h3>🎮 桌面贪吃蛇</h3>
+        <p class="dim">桌宠会变成蛇头，桌面上的图标会变成豆。<br>吃完所有豆即通关，撞墙或撞到自己则失败。</p>
+        <label class="start-row">豆子数量
+          <input id="game-count-input" type="number" min="1" step="1" value="10">
+        </label>
+        <p id="game-count-hint" class="dim start-hint"></p>
+        <div class="over-actions">
+          <button id="game-start-btn" class="mini-btn primary" type="button">开始游戏</button>
+          <button id="game-cancel-btn" class="mini-btn" type="button">取消</button>
+        </div>
+      </div>
+    </div>
+
     <div id="game-over" class="game-over hidden">
       <div class="over-card">
         <h3 id="game-over-title">游戏结束</h3>

@@ -25,10 +25,13 @@
   var els = {};
   var geo = null;           // { cols, rows, cell, offX, offY }
   var st = null;            // 游戏状态（core 的产物）
-  var icons = [];           // 豆的图标池 [{icon, name}]
+  var icons = [];           // 本局实际使用的豆（可能是从全部图标中随机抽选的子集）
+  var allIcons = null;      // 桌面全部图标（缓存；开局设置里作为上限）
+  var cachedIconSize = ICON_DEFAULT;
   var timer = null;
   var speed = BASE_MS;
   var running = false;
+  var preparing = false;    // 开局设置面板显示中
   var paused = false;
   var elapsedMs = 0;
   var lastTickAt = 0;
@@ -176,7 +179,13 @@
         var arr = list.filter(function (x) { return x && x.name; })
           .slice(0, MAX_ICONS)
           .map(function (x) {
-            return { name: x.name, icon: x.icon || '', isLink: !!x.isLink, isDir: !!x.isDir };
+            return {
+              name: x.name,
+              display: x.display || x.name,
+              icon: x.icon || '',
+              isLink: !!x.isLink,
+              isDir: !!x.isDir
+            };
           });
         return { icons: arr.length ? arr : fallbackIcons(), iconSize: size };
       }).catch(function () { return { icons: fallbackIcons(), iconSize: ICON_DEFAULT }; });
@@ -187,9 +196,20 @@
   function fallbackIcons() {
     var out = [];
     for (var i = 0; i < 10; i++) {
-      out.push({ name: '豆 ' + (i + 1), icon: '', emoji: FALLBACK_ICONS[i % FALLBACK_ICONS.length] });
+      out.push({ name: '豆 ' + (i + 1), display: '豆 ' + (i + 1), icon: '',
+                 emoji: FALLBACK_ICONS[i % FALLBACK_ICONS.length] });
     }
     return out;
+  }
+
+  /* 随机抽选 n 个图标（不改变原数组） */
+  function sampleIcons(arr, n) {
+    var a = arr.slice();
+    for (var i = a.length - 1; i > 0; i--) {
+      var j = Math.floor(Math.random() * (i + 1));
+      var t = a[i]; a[i] = a[j]; a[j] = t;
+    }
+    return a.slice(0, Math.max(1, Math.min(n, a.length)));
   }
 
   /* ══════════════════════════════════════════════════════════
@@ -304,7 +324,7 @@
       els.foodEmoji.style.display = '';
       els.foodImg.style.display = 'none';
     }
-    els.foodName.textContent = item.name || '';
+    els.foodName.textContent = item.display || item.name || '';
     els.foodBadge.style.display = item.isLink ? '' : 'none';
     els.food.title = item.name || '';
   }
@@ -328,7 +348,7 @@
       node._img.style.display = 'none';
       node._emoji.style.display = 'none';
     }
-    node._name.textContent = item ? (item.name || '') : '';
+    node._name.textContent = item ? (item.display || item.name || '') : '';
     node._badge.style.display = (item && item.isLink) ? '' : 'none';
     if (item) node.title = item.name || '';
   }
@@ -405,9 +425,13 @@
   };
 
   function onKey(e) {
-    // ESC 只在游戏进行中生效，避免非游戏状态下误触发退出/恢复流程
+    // ESC：游戏进行中或开局设置中都可用
     if (e.key === 'Escape') {
-      if (running) { e.preventDefault(); quit(); }
+      if (running || preparing) { e.preventDefault(); quit(); }
+      return;
+    }
+    if (preparing) {
+      if (e.key === 'Enter') { e.preventDefault(); onStartClick(); }
       return;
     }
     if (!running) return;
@@ -460,42 +484,84 @@
     }).catch(function () { return false; });
   }
 
+  /* 开局设置面板：选择豆子数量（默认=全部图标数，上限=图标数） */
+  function showStartPanel() {
+    var total = allIcons.length;
+    els.countInput.max = String(total);
+    els.countInput.value = String(total);
+    els.countHint.textContent = '桌面共 ' + total + ' 个图标，最多 ' + total
+      + '；填更少则随机抽选对应数量';
+    els.head.style.display = 'none';     // 开局前先不显示蛇头与豆
+    els.food.style.display = 'none';
+    els.start.classList.remove('hidden');
+    els.pauseHint.textContent = '设置豆子数量后开始';
+    preparing = true;
+    try { els.countInput.focus(); els.countInput.select(); } catch (e) {}
+  }
+
+  function onStartClick() {
+    if (!allIcons || !allIcons.length) return;
+    var n = parseInt(els.countInput.value, 10);
+    if (!isFinite(n) || n < 1) n = allIcons.length;
+    n = Math.max(1, Math.min(n, allIcons.length));   // 不允许超过图标总数
+    els.countInput.value = String(n);
+    els.start.classList.add('hidden');
+    preparing = false;
+    beginRun(n);
+  }
+
+  function beginRun(n) {
+    icons = (n >= allIcons.length) ? allIcons.slice() : sampleIcons(allIcons, n);
+    segNodes.forEach(function (node) { node.remove(); });
+    segNodes = [];
+    els.head.style.display = '';
+    elapsedMs = 0;
+    paused = false;
+    running = true;
+    st = core.makeState(geo.cols, geo.rows, icons.length);
+    layout();
+    paint();
+    // 游戏期间窗口需要键盘焦点
+    if (global.Save4.desktop && global.Save4.desktop.focusWindow) {
+      global.Save4.desktop.focusWindow();
+    }
+    countdown(function () {
+      lastTickAt = Date.now();
+      schedule();
+    });
+  }
+
   function start() {
-    if (running) return;
+    if (running || preparing) return;
     els.over.classList.add('hidden');
     els.pauseHint.textContent = '加载图标中…';
     els.head.style.backgroundImage = 'url("' + headImageUrl() + '")';
-
     loadWallpaper();
-    loadIcons().then(function (res) {
-      icons = res.icons;
-      // 按桌面真实的图标尺寸决定格子大小（每格 = 图标 + 24px 留给文件名）
-      CELL = Math.round((res.iconSize || ICON_DEFAULT)) + 24;
-      layout();
 
-      st = core.makeState(geo.cols, geo.rows, icons.length);
-      segNodes.forEach(function (n) { n.remove(); });
-      segNodes = [];
-      elapsedMs = 0;
-      paused = false;
-      running = true;
+    if (allIcons && allIcons.length) {          // 已有缓存：直接进设置面板
+      CELL = Math.round(cachedIconSize) + 24;
+      layout();
       paint();
-      // 吸附到当前皮肤；游戏期间窗口需要键盘焦点
-      if (global.Save4.desktop && global.Save4.desktop.focusWindow) {
-        global.Save4.desktop.focusWindow();
-      }
-      countdown(function () {
-        lastTickAt = Date.now();
-        schedule();
-      });
+      showStartPanel();
+      return;
+    }
+    loadIcons().then(function (res) {
+      allIcons = res.icons;
+      cachedIconSize = res.iconSize || ICON_DEFAULT;
+      CELL = Math.round(cachedIconSize) + 24;   // 格子 = 桌面图标尺寸 + 24（留给文件名）
+      layout();
+      paint();
+      showStartPanel();
     });
   }
 
   function quit() {
     running = false;
+    preparing = false;
     if (timer) { clearInterval(timer); timer = null; }
     els.over.classList.add('hidden');
     els.count.classList.add('hidden');
+    els.start.classList.add('hidden');
     els.pauseHint.textContent = '';
     segNodes.forEach(function (n) { n.remove(); });
     segNodes = [];
@@ -521,6 +587,9 @@
     els.best = document.getElementById('game-best');
     els.pauseHint = document.getElementById('game-pause-hint');
     els.count = document.getElementById('game-count');
+    els.start = document.getElementById('game-start');
+    els.countInput = document.getElementById('game-count-input');
+    els.countHint = document.getElementById('game-count-hint');
     els.over = document.getElementById('game-over');
     els.overTitle = document.getElementById('game-over-title');
     els.overSub = document.getElementById('game-over-sub');
@@ -529,6 +598,8 @@
     if (!els.root || !els.board) return;
 
     document.getElementById('game-exit').addEventListener('click', quit);
+    document.getElementById('game-start-btn').addEventListener('click', onStartClick);
+    document.getElementById('game-cancel-btn').addEventListener('click', quit);
     document.getElementById('game-pause').addEventListener('click', function () { togglePause(); });
     document.getElementById('game-retry').addEventListener('click', function () {
       els.over.classList.add('hidden');

@@ -253,6 +253,15 @@ function readDesktopIconSize() {
   });
 }
 
+/* 显示名：去掉扩展名（与 Windows 桌面「隐藏已知扩展名」一致，如 xxx.lnk → xxx）
+   文件夹不处理；以点开头的隐藏文件不处理；完整名仍保留在 name 里作为悬停提示 */
+function displayName(name, isDir) {
+  if (isDir) return name;
+  const i = name.lastIndexOf('.');
+  if (i <= 0) return name;
+  return name.slice(0, i);
+}
+
 ipcMain.handle('game:icons', async () => {
   const dirs = [];
   try { dirs.push(app.getPath('desktop')); } catch (e) {}
@@ -283,7 +292,13 @@ ipcMain.handle('game:icons', async () => {
       if (!icon && src !== full) {           // 目标图标取不到 → 退回原路径
         try { icon = (await app.getFileIcon(full, { size: 'normal' })).toDataURL(); } catch (e) {}
       }
-      out.push({ name: ent.name, isDir: ent.isDirectory(), isLink: isLink, icon: icon });
+      out.push({
+        name: ent.name,
+        display: displayName(ent.name, ent.isDirectory()),
+        isDir: ent.isDirectory(),
+        isLink: isLink,
+        icon: icon
+      });
     }
   }
   const iconSize = await readDesktopIconSize();

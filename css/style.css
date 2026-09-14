@@ -863,6 +863,31 @@ body[data-mode="game"] #bubble { z-index: 130; }
 }
 .game-count.hidden { display: none; }
 
+/* 开局设置面板 */
+.game-start {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(10, 8, 14, .5);
+}
+.game-start.hidden { display: none; }
+.start-row {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  font-size: 13.5px; margin: 14px 0 4px;
+}
+#game-count-input {
+  width: 92px;
+  border: 1.5px solid var(--accent-soft);
+  border-radius: 10px;
+  padding: 7px 10px;
+  font: inherit; font-size: 14px;
+  text-align: center;
+  color: var(--ink);
+  background: #fffdf9;
+  outline: none;
+}
+#game-count-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.start-hint { font-size: 12px; margin: 2px 0 4px; }
+
 /* 结算面板 */
 .game-over {
   position: absolute; inset: 0;
