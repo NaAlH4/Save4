@@ -700,7 +700,11 @@ body:not([data-mode]) #tray { display: none; }
 #ai-rolecard:focus, #ai-profile:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 
 /* ══════════ 桌面贪吃蛇（game.js） ══════════ */
-.game { display: none; position: fixed; inset: 0; z-index: 90; }
+.game {
+  display: none; position: fixed; inset: 0; z-index: 90;
+  background: #14121c center/cover no-repeat;   /* 无壁纸时的兜底底色 */
+}
+.game.has-wallpaper { background-size: cover; background-position: center; }
 body[data-mode="game"] .game { display: block; }
 body[data-mode="game"] #pet,
 body[data-mode="game"] #panel,
@@ -710,55 +714,92 @@ body[data-mode="game"] #chat { display: none !important; }
 /* 提醒气泡仍可见（置顶），避免玩游戏时漏掉到点提醒 */
 body[data-mode="game"] #bubble { z-index: 130; }
 
-/* 遮罩：让真实桌面图标在视觉上“消失”，但绝不改动它们 */
+/* 遮罩很轻：保留壁纸"这就是桌面"的观感，只做一点点压暗保证可读性 */
 .game-veil {
   position: absolute; inset: 0;
-  background: rgba(20, 16, 26, .62);
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
+  background: rgba(12, 10, 20, .18);
 }
 
 .game-board {
   position: absolute;
   border-radius: 14px;
+  /* 网格线极淡，既能看出格子又不破坏壁纸观感 */
   background:
-    linear-gradient(rgba(255,255,255,.045) 1px, transparent 1px) 0 0 / 100% 40px,
-    linear-gradient(90deg, rgba(255,255,255,.045) 1px, transparent 1px) 0 0 / 40px 100%,
-    rgba(255, 255, 255, .06);
-  border: 1px solid rgba(255, 255, 255, .14);
-  box-shadow: 0 18px 60px rgba(0, 0, 0, .45) inset;
+    linear-gradient(rgba(255,255,255,.07) 1px, transparent 1px) 0 0 / 100% 56px,
+    linear-gradient(90deg, rgba(255,255,255,.07) 1px, transparent 1px) 0 0 / 56px 100%;
+  border: 1px solid rgba(255, 255, 255, .18);
+  box-shadow: 0 18px 60px rgba(0, 0, 0, .30) inset;
+  overflow: visible;
 }
 
 /* 蛇头 = 桌宠形象 */
 .game-head {
   position: absolute;
-  width: 40px; height: 40px;
+  width: 56px; height: 56px;
   background-repeat: no-repeat;
   background-position: center;
   background-size: contain;
   will-change: transform;
-  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, .45));
+  filter: drop-shadow(0 4px 10px rgba(0, 0, 0, .55));
   z-index: 3;
 }
-/* 蛇身 */
+
+/* 蛇身 = 被吃掉文件的「仿真图标」（图标 + 文件名） */
 .seg {
   position: absolute;
-  width: 34px; height: 34px;
-  margin: 3px;
-  border-radius: 10px;
-  background: linear-gradient(160deg, #f9c877, #f0a45f);
-  box-shadow: 0 2px 6px rgba(0, 0, 0, .35);
+  width: 56px; height: 56px;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: flex-start;
+  padding-top: 3px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, .16);
+  border: 1px solid rgba(255, 255, 255, .22);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .38);
+  overflow: hidden;
   z-index: 2;
 }
-/* 豆 = 桌面文件图标 */
+.seg-icon { width: 28px; height: 28px; object-fit: contain; pointer-events: none; }
+.seg-emoji { font-size: 24px; line-height: 28px; }
+.seg-name {
+  margin-top: 1px;
+  width: 100%;
+  padding: 0 2px;
+  font-size: 8.5px;
+  line-height: 1.15;
+  text-align: center;
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0,0,0,.9), 0 0 3px rgba(0,0,0,.75);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 豆 = 桌面文件图标 + 文件名（仿真桌面图标） */
 .game-food {
   position: absolute;
-  width: 40px; height: 40px;
-  display: flex; align-items: center; justify-content: center;
+  width: 56px; height: 56px;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: flex-start;
+  padding-top: 2px;
   z-index: 1;
 }
-.game-food img { max-width: 32px; max-height: 32px; pointer-events: none; }
-.game-food span { font-size: 24px; line-height: 1; }
+.game-food img { max-width: 36px; max-height: 36px; pointer-events: none;
+  filter: drop-shadow(0 2px 6px rgba(0,0,0,.6)); }
+.game-food span { font-size: 26px; line-height: 34px; }
+.food-name {
+  margin-top: 1px;
+  max-width: 104px;               /* 豆是唯一的，标签可比格子宽 */
+  font-size: 11px;
+  line-height: 1.2;
+  text-align: center;
+  color: #fff;
+  text-shadow: 0 1px 3px rgba(0,0,0,.95), 0 0 4px rgba(0,0,0,.8);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-all;
+}
 
 /* HUD */
 .game-hud {

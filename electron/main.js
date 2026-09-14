@@ -47,6 +47,16 @@ async function serveAppFile(request) {
     const u = new URL(request.url);
     if (u.host !== HOST) return new Response('bad host', { status: 400 });
     let p = decodeURIComponent(u.pathname);
+
+    // 虚拟路径：当前桌面壁纸（游戏背景）
+    if (p === '/__wallpaper') {
+      const wp = resolveWallpaper();
+      if (!wp) return new Response('no wallpaper', { status: 404 });
+      return new Response(Readable.toWeb(fs.createReadStream(wp.path)), {
+        headers: { 'Content-Type': wp.mime, 'Cache-Control': 'no-store' }
+      });
+    }
+
     if (p === '/' || p === '') p = '/index.html';
     const fp = path.normalize(path.join(ROOT, p));
     if (!fp.startsWith(ROOT)) return new Response('forbidden', { status: 403 });
@@ -157,6 +167,67 @@ ipcMain.on('app:reminder', (e, text) => {
     }
     showWindow();
   }
+});
+
+/* ---------- 读取当前桌面壁纸（游戏背景用） ----------
+   候选来源：Wallpaper Engine 覆盖图 / Windows 转码壁纸 / CachedFiles，
+   取其中「修改时间最新」的一张；用魔术字节判断格式（TranscodedWallpaper 无扩展名）。 */
+let wallpaperCache;   // undefined=未解析, false=无, {path,mime}=命中
+
+function sniffMime(fp) {
+  try {
+    const fd = fs.openSync(fp, 'r');
+    const buf = Buffer.alloc(12);
+    fs.readSync(fd, buf, 0, 12, 0);
+    fs.closeSync(fd);
+    if (buf[0] === 0xFF && buf[1] === 0xD8) return 'image/jpeg';
+    if (buf[0] === 0x89 && buf[1] === 0x50) return 'image/png';
+    if (buf[0] === 0x42 && buf[1] === 0x4D) return 'image/bmp';
+    if (buf.slice(0, 4).toString() === 'RIFF') return 'image/webp';
+  } catch (e) {}
+  return 'image/jpeg';
+}
+
+function resolveWallpaper() {
+  if (wallpaperCache !== undefined) return wallpaperCache;
+  const cands = [];
+  const themes = process.env.APPDATA
+    ? path.join(process.env.APPDATA, 'Microsoft', 'Windows', 'Themes')
+    : null;
+
+  if (themes) {
+    // Wallpaper Engine 等动态壁纸的静态覆盖图（通常最接近你看到的效果）
+    try {
+      fs.readdirSync(themes).forEach((f) => {
+        if (/^WallpaperEngineOverride.*\.(jpe?g|png)$/i.test(f)) cands.push(path.join(themes, f));
+      });
+    } catch (e) {}
+    cands.push(path.join(themes, 'TranscodedWallpaper'));
+    try {
+      const cf = path.join(themes, 'CachedFiles');
+      fs.readdirSync(cf).forEach((f) => {
+        if (/\.(jpe?g|png|bmp)$/i.test(f)) cands.push(path.join(cf, f));
+      });
+    } catch (e) {}
+  }
+
+  let best = null;
+  for (const p of cands) {
+    try {
+      const s = fs.statSync(p);
+      if (!s.isFile() || s.size === 0) continue;
+      if (!best || s.mtimeMs > best.mtimeMs) best = { path: p, mtimeMs: s.mtimeMs, size: s.size };
+    } catch (e) {}
+  }
+  wallpaperCache = best ? { path: best.path, mime: sniffMime(best.path) } : false;
+  return wallpaperCache;
+}
+
+ipcMain.handle('game:wallpaper', () => {
+  const wp = resolveWallpaper();
+  if (!wp) return { ok: false };
+  // 由 app:// 的虚拟路径提供，避免几 MB 图片走 IPC base64
+  return { ok: true, url: 'app://' + HOST + '/__wallpaper', name: path.basename(wp.path) };
 });
 
 /* ---------- 桌面贪吃蛇：枚举桌面图标（读取真实文件图标，只读不改动） ---------- */

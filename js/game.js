@@ -14,7 +14,7 @@
   var S = function () { return global.Save4.store; };
   var BEST_KEY = 'game.snake.best';
 
-  var CELL = 40;            // 每格像素
+  var CELL = 56;            // 每格像素（比初版更大，便于容纳图标+文件名）
   var BASE_MS = 150;        // 基础步进间隔
   var MIN_MS = 70;          // 最快间隔
   var RAMP_EVERY = 5;       // 每吃几颗提速一次
@@ -243,11 +243,17 @@
     if (!st || !geo) return;
     // 蛇头
     placeAt(els.head, st.snake[0].x, st.snake[0].y);
-    // 蛇身
+    // 蛇身：每节显示「所吃到文件的图标 + 文件名」
     var bodyLen = st.snake.length - 1;
     while (segNodes.length < bodyLen) {
       var d = document.createElement('div');
       d.className = 'seg';
+      d.innerHTML = '<img class="seg-icon" alt="" draggable="false">'
+                  + '<span class="seg-emoji"></span>'
+                  + '<span class="seg-name"></span>';
+      d._img = d.querySelector('.seg-icon');
+      d._emoji = d.querySelector('.seg-emoji');
+      d._name = d.querySelector('.seg-name');
       els.board.appendChild(d);
       segNodes.push(d);
     }
@@ -256,6 +262,7 @@
       if (i < bodyLen) {
         node.style.display = '';
         placeAt(node, st.snake[i + 1].x, st.snake[i + 1].y);
+        paintSegContent(node, st.eaten - (i + 1));   // 紧邻蛇头的第一节 = 最近吃到的
       } else {
         node.style.display = 'none';
       }
@@ -271,7 +278,7 @@
     paintHud();
   }
 
-  /* 当前豆显示第 eaten 号图标（吃掉后自动换成下一个） */
+  /* 当前豆显示第 eaten 号图标（吃掉后自动换成下一个）——仿真桌面图标：图标 + 文件名 */
   function paintFoodIcon() {
     var item = icons[st.eaten % icons.length];
     if (!item) return;
@@ -284,7 +291,31 @@
       els.foodEmoji.style.display = '';
       els.foodImg.style.display = 'none';
     }
+    els.foodName.textContent = item.name || '';
     els.food.title = item.name || '';
+  }
+
+  /* 蛇身第 i 节（1 起，紧邻蛇头为 1）承载「倒数第 i 个被吃掉的图标」
+     这样吃到的东西会一路跟着身体走，外观与刚出现时一致 */
+  function paintSegContent(node, idx) {
+    var key = String(idx);
+    if (node.dataset.iconIdx === key) return;   // 未变化则不重设 src，避免重复解码
+    node.dataset.iconIdx = key;
+    var item = (idx >= 0 && idx < icons.length) ? icons[idx] : null;
+    if (item && item.icon) {
+      node._img.src = item.icon;
+      node._img.style.display = '';
+      node._emoji.style.display = 'none';
+    } else if (item) {
+      node._emoji.textContent = item.emoji || '📄';
+      node._emoji.style.display = '';
+      node._img.style.display = 'none';
+    } else {
+      node._img.style.display = 'none';
+      node._emoji.style.display = 'none';
+    }
+    node._name.textContent = item ? (item.name || '') : '';
+    if (item) node.title = item.name || '';
   }
 
   function paintHud() {
@@ -398,6 +429,22 @@
     show();
   }
 
+  /* 读取当前桌面壁纸作为游戏背景（桌面版）；失败则退回深色底 */
+  function loadWallpaper() {
+    var desk = global.Save4Desktop;
+    var url = (desk && desk.isDesktop && desk.gameWallpaper) ? desk.gameWallpaper() : null;
+    if (!url || !url.then) return Promise.resolve(false);
+    return url.then(function (r) {
+      if (r && r.ok && r.url) {
+        els.root.style.backgroundImage = 'url("' + r.url + '")';
+        els.root.classList.add('has-wallpaper');
+        return true;
+      }
+      els.root.classList.remove('has-wallpaper');
+      return false;
+    }).catch(function () { return false; });
+  }
+
   function start() {
     if (running) return;
     els.over.classList.add('hidden');
@@ -405,6 +452,7 @@
     els.head.style.backgroundImage = 'url("' + headImageUrl() + '")';
     layout();
 
+    loadWallpaper();
     loadIcons().then(function (list) {
       icons = list;
       st = core.makeState(geo.cols, geo.rows, icons.length);
@@ -447,6 +495,7 @@
     els.food = document.getElementById('game-food');
     els.foodImg = document.getElementById('game-food-img');
     els.foodEmoji = document.getElementById('game-food-emoji');
+    els.foodName = document.getElementById('game-food-name');
     els.score = document.getElementById('game-score');
     els.remain = document.getElementById('game-remain');
     els.time = document.getElementById('game-time');
