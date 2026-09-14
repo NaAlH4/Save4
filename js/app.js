@@ -20,6 +20,7 @@
   var chat = global.Save4.chat;
   var journal = global.Save4.journal;
   var skinMod = global.Save4.skin;   // 自定义形象模块（注意勿与下方 skin() 函数重名）
+  var game = global.Save4.game;      // 桌面贪吃蛇
   var K = store.KEYS;
 
   var petGeo, panelGeo, mode;
@@ -156,6 +157,7 @@
     hideMenu();
     if (act === 'chat') { chat.open(); return; }
     if (act === 'journal') { openJournal(true); return; }
+    if (act === 'game') { beginGame(); return; }
     if (act === 'settings') { els.settings.showModal(); return; }
     if (act === 'full' || act === 'pet' || act === 'hidden') setMode(act);
   }
@@ -428,6 +430,43 @@
     }
   }
 
+  /* ══════════ 桌面贪吃蛇：进入 / 退出（模式快照与恢复） ══════════
+     进入时把当前模式与桌宠几何存快照，退出时原样还原；
+     整个过程不触碰真实桌面文件与图标位置。 */
+  var gameSnapshot = null;
+
+  function beginGame() {
+    if (!game || game.isRunning()) return;
+    gameSnapshot = {
+      mode: mode || 'full',
+      geo: { x: petGeo.x, y: petGeo.y, w: petGeo.w, h: petGeo.h }
+    };
+    if (chat) chat.close();
+    hideMenu();
+    document.body.setAttribute('data-mode', 'game');   // 不改动持久化的 mode
+    // 游戏需要键盘焦点与全屏可交互（覆盖层默认是点击穿透的）
+    if (global.Save4.desktop && global.Save4.desktop.setForceInteractive) {
+      global.Save4.desktop.setForceInteractive(true);
+    }
+    game.start();
+  }
+
+  function endGame() {
+    document.body.setAttribute('data-mode', gameSnapshot ? gameSnapshot.mode : (mode || 'full'));
+    if (gameSnapshot) {
+      petGeo.x = gameSnapshot.geo.x; petGeo.y = gameSnapshot.geo.y;
+      petGeo.w = gameSnapshot.geo.w; petGeo.h = gameSnapshot.geo.h;
+      clampGeo(petGeo);
+      applyGeo(els.pet, petGeo);
+      store.write(K.PET_GEO, petGeo);      // 顺带把还原后的几何落盘
+      gameSnapshot = null;
+    }
+    if (global.Save4.desktop && global.Save4.desktop.setForceInteractive) {
+      global.Save4.desktop.setForceInteractive(false);
+    }
+    if (mode === 'pet') placeStrip();
+  }
+
   /* ══════════ 窗口尺寸变化时钳制在可视范围内 ══════════ */
   function onResize() {
     clampGeo(petGeo); applyGeo(els.pet, petGeo);
@@ -481,6 +520,7 @@
     initSettings();
     dataio.init();
     initChat();
+    if (game) game.init();
 
     window.addEventListener('resize', onResize);
     // 给首次打开一个欢快反馈
@@ -527,6 +567,8 @@
     registerCustomSkin: registerCustomSkin,
     unregisterCustomSkin: unregisterCustomSkin,
     selectSkin: selectSkin,
-    getSkin: function () { return skinKey; }
+    getSkin: function () { return skinKey; },
+    beginGame: beginGame,
+    endGame: endGame
   };
 })(window);

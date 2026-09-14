@@ -226,8 +226,52 @@
     <div id="chat-resize" class="no-drag resize-handle" title="拖动缩放"></div>
   </div>
 
+  <!-- ══════════ 桌面贪吃蛇游戏层（game.js） ══════════ -->
+  <div id="game" class="game">
+    <div class="game-veil"></div>
+
+    <div id="game-board" class="game-board">
+      <div id="game-head" class="game-head"></div>
+      <div id="game-food" class="game-food">
+        <img id="game-food-img" alt="" draggable="false">
+        <span id="game-food-emoji"></span>
+      </div>
+    </div>
+
+    <div class="game-hud">
+      <div class="hud-left">
+        <span class="hud-item">分数 <b id="game-score">0</b></span>
+        <span class="hud-item">剩余 <b id="game-remain">0</b></span>
+        <span class="hud-item">用时 <b id="game-time">0:00</b></span>
+        <span class="hud-item">最高 <b id="game-best">0</b></span>
+        <span id="game-pause-hint" class="hud-pause"></span>
+      </div>
+      <div class="hud-right">
+        <button id="game-pause" class="mini-btn" type="button">暂停</button>
+        <button id="game-exit" class="mini-btn danger" type="button">退出 (Esc)</button>
+      </div>
+    </div>
+
+    <div id="game-count" class="game-count hidden"></div>
+
+    <div id="game-over" class="game-over hidden">
+      <div class="over-card">
+        <h3 id="game-over-title">游戏结束</h3>
+        <p id="game-over-sub" class="dim"></p>
+        <p id="game-over-stats" class="over-stats"></p>
+        <div class="over-actions">
+          <button id="game-retry" class="mini-btn primary" type="button">再玩一次</button>
+          <button id="game-quit" class="mini-btn" type="button">退出游戏</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="game-tips">方向键 / WASD 转向 · 空格 暂停 · Esc 退出（不会改动桌面上的文件）</div>
+  </div>
+
   <!-- ══════════ 右键菜单 ══════════ -->
   <div id="menu" class="menu hidden" role="menu">
+    <button data-act="game">🎮 桌面贪吃蛇</button>
     <button data-act="chat">💬 AI 对话</button>
     <button data-act="journal">📔 写日记 / 随笔</button>
     <button data-act="full">完全展开</button>
@@ -341,6 +385,7 @@
   <script src="js/dataio.js"></script>
   <script src="js/chat.js"></script>
   <script src="js/skin.js"></script>
+  <script src="js/game.js"></script>
   <script src="js/app.js"></script>
   <script src="js/desktop.js"></script>
 </body>

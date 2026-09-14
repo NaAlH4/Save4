@@ -18,6 +18,7 @@
   var dragging = false;
   var lastInteractive = null;
   var windowVisible = true;
+  var forceInteractive = false;   // 游戏期间强制整屏可交互
 
   function hitInteractive(e) {
     var el = document.elementFromPoint(e.clientX, e.clientY);
@@ -27,7 +28,7 @@
 
   function sync(e) {
     if (!desk.overlay) return;
-    var interactive = dragging || hitInteractive(e);
+    var interactive = forceInteractive || dragging || hitInteractive(e);
     if (interactive !== lastInteractive) {
       lastInteractive = interactive;
       desk.setInteractive(interactive);
@@ -61,6 +62,17 @@
 
   global.Save4 = global.Save4 || {};
   global.Save4.desktop = {
-    windowVisible: function () { return windowVisible; }
+    windowVisible: function () { return windowVisible; },
+    /* 游戏期间：整屏可交互（否则键盘/鼠标事件会被穿透到桌面） */
+    setForceInteractive: function (v) {
+      forceInteractive = !!v;
+      lastInteractive = forceInteractive ? true : null;
+      desk.setInteractive(forceInteractive);
+    },
+    /* 抢窗口焦点，保证方向键能进来 */
+    focusWindow: function () {
+      if (desk.gameFocus) desk.gameFocus();
+      try { window.focus(); } catch (e) {}
+    }
   };
 })(window);

@@ -159,6 +159,44 @@ ipcMain.on('app:reminder', (e, text) => {
   }
 });
 
+/* ---------- 桌面贪吃蛇：枚举桌面图标（读取真实文件图标，只读不改动） ---------- */
+ipcMain.handle('game:icons', async () => {
+  const dirs = [];
+  try { dirs.push(app.getPath('desktop')); } catch (e) {}
+  if (process.env.PUBLIC) dirs.push(path.join(process.env.PUBLIC, 'Desktop'));
+
+  const out = [];
+  const LIMIT = 80;
+  for (const dir of dirs) {
+    let entries = [];
+    try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch (e) { continue; }
+    for (const ent of entries) {
+      if (out.length >= LIMIT) break;
+      if (ent.name === 'desktop.ini') continue;
+      const full = path.join(dir, ent.name);
+      let icon = '';
+      try {
+        const img = await app.getFileIcon(full, { size: 'normal' });
+        icon = img.toDataURL();
+      } catch (e) { icon = ''; }
+      out.push({ name: ent.name, isDir: ent.isDirectory(), icon: icon });
+    }
+  }
+  return out;
+});
+
+/* ---------- 游戏需要键盘焦点：暂时关掉点击穿透并抢焦点 ---------- */
+ipcMain.handle('game:focus', () => {
+  if (!win) return false;
+  try {
+    win.setIgnoreMouseEvents(false);
+    if (!win.isVisible()) win.show();
+    win.focus();
+    win.webContents.focus();
+  } catch (e) { return false; }
+  return true;
+});
+
 /* ---------- AI 对话代理（桌面版核心：主进程发请求，规避浏览器 CORS） ----------
    请求体: { baseUrl, apiKey, model, messages, temperature }
    返回:   { ok, text } | { ok:false, error }  （仅支持 OpenAI 兼容 chat/completions）

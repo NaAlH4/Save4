@@ -24,5 +24,8 @@ contextBridge.exposeInMainWorld('Save4Desktop', {
   exportData: (payload) => ipcRenderer.invoke('data:export', payload),
   importData: () => ipcRenderer.invoke('data:import'),
   // AI 聊天代理（主进程发请求，规避 CORS）
-  aiChat: (opts) => ipcRenderer.invoke('ai:chat', opts)
+  aiChat: (opts) => ipcRenderer.invoke('ai:chat', opts),
+  // 桌面贪吃蛇：真实桌面图标 + 游戏焦点
+  listDesktopIcons: () => ipcRenderer.invoke('game:icons'),
+  gameFocus: () => ipcRenderer.invoke('game:focus')
 });

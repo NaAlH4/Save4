@@ -699,6 +699,124 @@ body:not([data-mode]) #tray { display: none; }
 }
 #ai-rolecard:focus, #ai-profile:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 
+/* ══════════ 桌面贪吃蛇（game.js） ══════════ */
+.game { display: none; position: fixed; inset: 0; z-index: 90; }
+body[data-mode="game"] .game { display: block; }
+body[data-mode="game"] #pet,
+body[data-mode="game"] #panel,
+body[data-mode="game"] #strip,
+body[data-mode="game"] #tray,
+body[data-mode="game"] #chat { display: none !important; }
+/* 提醒气泡仍可见（置顶），避免玩游戏时漏掉到点提醒 */
+body[data-mode="game"] #bubble { z-index: 130; }
+
+/* 遮罩：让真实桌面图标在视觉上“消失”，但绝不改动它们 */
+.game-veil {
+  position: absolute; inset: 0;
+  background: rgba(20, 16, 26, .62);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+.game-board {
+  position: absolute;
+  border-radius: 14px;
+  background:
+    linear-gradient(rgba(255,255,255,.045) 1px, transparent 1px) 0 0 / 100% 40px,
+    linear-gradient(90deg, rgba(255,255,255,.045) 1px, transparent 1px) 0 0 / 40px 100%,
+    rgba(255, 255, 255, .06);
+  border: 1px solid rgba(255, 255, 255, .14);
+  box-shadow: 0 18px 60px rgba(0, 0, 0, .45) inset;
+}
+
+/* 蛇头 = 桌宠形象 */
+.game-head {
+  position: absolute;
+  width: 40px; height: 40px;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: contain;
+  will-change: transform;
+  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, .45));
+  z-index: 3;
+}
+/* 蛇身 */
+.seg {
+  position: absolute;
+  width: 34px; height: 34px;
+  margin: 3px;
+  border-radius: 10px;
+  background: linear-gradient(160deg, #f9c877, #f0a45f);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, .35);
+  z-index: 2;
+}
+/* 豆 = 桌面文件图标 */
+.game-food {
+  position: absolute;
+  width: 40px; height: 40px;
+  display: flex; align-items: center; justify-content: center;
+  z-index: 1;
+}
+.game-food img { max-width: 32px; max-height: 32px; pointer-events: none; }
+.game-food span { font-size: 24px; line-height: 1; }
+
+/* HUD */
+.game-hud {
+  position: absolute;
+  left: 0; right: 0; top: 0;
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 10px;
+  padding: 12px 16px;
+  color: #fff;
+  font-size: 13px;
+}
+.hud-left { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.hud-item { background: rgba(0, 0, 0, .38); border-radius: 999px; padding: 5px 12px; }
+.hud-item b { color: #ffd79a; }
+.hud-pause { color: #ffd79a; font-weight: 600; }
+.hud-right { display: flex; gap: 8px; }
+.game-hud .mini-btn { background: rgba(255,255,255,.14); color: #fff; border-color: rgba(255,255,255,.28); }
+.game-hud .mini-btn:hover { background: rgba(255,255,255,.26); color: #fff; }
+
+/* 倒计时 */
+.game-count {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 78px; font-weight: 800; color: #fff;
+  text-shadow: 0 6px 24px rgba(0, 0, 0, .6);
+  pointer-events: none;
+}
+.game-count.hidden { display: none; }
+
+/* 结算面板 */
+.game-over {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(10, 8, 14, .55);
+}
+.game-over.hidden { display: none; }
+.over-card {
+  background: #fffdf9;
+  color: var(--ink);
+  border-radius: 18px;
+  padding: 22px 28px;
+  text-align: center;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, .5);
+  min-width: 260px;
+}
+.over-card h3 { margin: 0 0 6px; font-size: 19px; }
+.over-card .dim { font-size: 13px; margin: 4px 0; }
+.over-stats { font-size: 13.5px; margin: 10px 0 16px; }
+.over-stats b { color: var(--accent); }
+.over-actions { display: flex; gap: 10px; justify-content: center; }
+
+.game-tips {
+  position: absolute; left: 0; right: 0; bottom: 10px;
+  text-align: center;
+  color: rgba(255, 255, 255, .62);
+  font-size: 12px;
+}
+
 /* ══════════ 右键菜单 ══════════ */
 .menu {
   position: fixed;
