@@ -11,7 +11,8 @@
     "dev": "electron .",
     "fetch:bins": "node scripts/fetch-builder-bins.js",
     "dist": "electron-builder --win",
-    "dist:dir": "electron-builder --win --dir"
+    "dist:dir": "electron-builder --win --dir",
+    "release": "node scripts/publish-release.js"
   },
   "devDependencies": {
     "electron": "^44.3.0",
