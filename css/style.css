@@ -443,8 +443,9 @@ body[data-mode="full"]   #panel { display: flex; }
 body[data-mode="full"]   #strip,
 body[data-mode="full"]   #tray  { display: none; }
 
+/* 仅形象模式：只显示桌宠本体，不显示下方收起条 */
 body[data-mode="pet"]    #pet   { display: block; }
-body[data-mode="pet"]    #strip { display: inline-flex; }
+body[data-mode="pet"]    #strip,
 body[data-mode="pet"]    #panel,
 body[data-mode="pet"]    #tray  { display: none; }
 

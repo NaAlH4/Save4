@@ -94,9 +94,12 @@
     el.style.height = geo.h + 'px';
   }
 
-  /* ══════════ 收起条跟随桌宠 ══════════ */
+  /* ══════════ 收起条跟随桌宠 ══════════
+     注：「仅形象」模式已不再显示收起条，此处保留定位逻辑以备将来启用；
+     元素隐藏时（offsetParent 为 null）直接早退，避免拖拽时做无谓计算。 */
   function placeStrip() {
     var petEl = els.pet;
+    if (!els.strip || !els.strip.offsetParent) return;
     var rect = petEl.getBoundingClientRect();
     var sw = els.strip.offsetWidth;
     var x = drag.clamp(rect.left + rect.width / 2 - sw / 2, 6, window.innerWidth - sw - 6);
@@ -197,21 +200,8 @@
         if (r.checked) selectSkin(r.value);
       });
     });
-    // 收起条内容
-    var radios = dlg.querySelectorAll('input[name="stripContent"]');
-    radios.forEach(function (r) {
-      r.checked = (r.value === panel.stripContentType());
-      r.addEventListener('change', function () {
-        if (r.checked) {
-          store.write(K.STRIP_CONTENT, r.value);
-          panel.renderStrip($('strip-text'));
-        }
-      });
-    });
-    // 关闭后若当前为 pet 模式，重放收起条
-    dlg.addEventListener('close', function () {
-      if (mode === 'pet') placeStrip();
-    });
+    // 说明：收起条已不再显示（「仅形象」模式只留桌宠本体），
+    // 因此原来的「收起条显示内容」设置项及其绑定一并移除。
 
     initAISettings();
   }
