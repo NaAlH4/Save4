@@ -33,8 +33,10 @@
       "css/**/*",
       "shortcut_icon.ico",
       "flipped_cut.png",
-      "liuge.png",
-      "package.json"
+      "package.json",
+      "!liuge.png",
+      "!刘哥点赞.jpg",
+      "!项目文档.txt"
     ],
     "extraResources": [],
     "win": {
