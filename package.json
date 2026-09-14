@@ -1,7 +1,7 @@
 {
   "name": "save4",
   "productName": "Save4",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Save4 — 一个住在你桌面的可爱陪伴桌宠：备忘提醒 / 倒计时 / AI 对话消化",
   "main": "electron/main.js",
   "author": "Save4",
