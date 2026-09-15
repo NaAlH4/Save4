@@ -21,7 +21,8 @@
      否则自动用「下载说明 + 自上个 tag 以来的提交记录」生成。
 
    特性：自动创建 Release（若不存在）；清理上次中断留下的未完成资产；
-        每个文件最多重试 3 次。
+         每个文件最多重试 3 次；第 1 次走 fetch，之后改用 curl 兜底
+         （fetch/undici 有 300s headersTimeout，经代理传 100MB+ 容易假超时）。
    ════════════════════════════════════════════════════════════ */
 'use strict';
 
@@ -160,6 +161,50 @@ async function uploadOnce(token, owner, repo, releaseId, file) {
   return JSON.parse(text);
 }
 
+/* 备用上传通道：curl。
+   原因：Node 内置 fetch(undici) 的 headersTimeout 默认 300s，经代理上传 100MB+
+   时服务端要收完整个 body 才回响应头，因此会 UND_ERR_HEADERS_TIMEOUT / ECONNRESET。
+   curl 没有这个限制、支持断点式重试，且会自动读取 HTTPS_PROXY 环境变量。
+   token 通过临时 --config 文件传入，避免出现在命令行/进程列表里。 */
+function curlUpload(token, owner, repo, releaseId, file) {
+  const os = require('os');
+  const abs = path.join(ROOT, file);
+  const name = path.basename(abs);
+  const cfg = path.join(os.tmpdir(), 'save4-curl-' + process.pid + '-' + Date.now() + '.cfg');
+  fs.writeFileSync(cfg, [
+    'header = "Authorization: Bearer ' + token + '"',
+    'header = "User-Agent: Save4-Release"',
+    'header = "Content-Type: application/octet-stream"',
+    'header = "Accept: application/vnd.github+json"',
+    ''
+  ].join('\n'), { mode: 0o600 });
+
+  try {
+    const args = [
+      '-sS', '--fail-with-body', '-K', cfg,
+      '-X', 'POST',
+      '--data-binary', '@' + abs,
+      '--retry', '5', '--retry-all-errors', '--retry-delay', '5',
+      '--connect-timeout', '30',
+      '-w', '\n%{http_code}',
+      `${UPLOADS}/repos/${owner}/${repo}/releases/${releaseId}/assets?name=${encodeURIComponent(name)}`
+    ];
+    const r = spawnSync('curl.exe', args, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, windowsHide: true });
+    if (r.error) return { ok: false, error: 'curl 不可用: ' + r.error.message };
+    const out = String(r.stdout || '');
+    const i = out.lastIndexOf('\n');
+    const code = out.slice(i + 1).trim();
+    const body = out.slice(0, i).trim();
+    if (code !== '201') return { ok: false, error: 'HTTP ' + code + ' ' + body.slice(0, 200) };
+    const j = JSON.parse(body);
+    return { ok: true, name: j.name, size: j.size };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  } finally {
+    try { fs.unlinkSync(cfg); } catch (e) {}
+  }
+}
+
 /* ---------- 主流程 ---------- */
 (async () => {
   const p = pkg();
@@ -217,6 +262,18 @@ async function uploadOnce(token, owner, repo, releaseId, file) {
   // 2) 清理半截资产
   const done = await cleanIncomplete(token, owner, repo, rel.id);
 
+  // 上传通道顺序：走代理时优先 curl（undici 的 300s headersTimeout 经代理传大文件会假超时），
+  // 直连时优先 fetch（更快更省事）。可用 SAVE4_UPLOAD=curl|fetch 强制指定。
+  const hasCurl = (() => {
+    try { return spawnSync('curl.exe', ['--version'], { encoding: 'utf8', windowsHide: true }).status === 0; }
+    catch (e) { return false; }
+  })();
+  const force = (process.env.SAVE4_UPLOAD || '').toLowerCase();
+  let order = (PROXY && hasCurl) ? ['curl', 'fetch', 'curl'] : ['fetch', 'curl', 'curl'];
+  if (force === 'curl' && hasCurl) order = ['curl', 'curl', 'curl'];
+  if (force === 'fetch') order = ['fetch', 'fetch', 'curl'];
+  console.log('上传通道: ' + order.join(' → ') + (hasCurl ? '' : '（未找到 curl，大文件经代理可能超时）') + '\n');
+
   // 3) 逐个上传（每项最多 3 次）
   let allOk = true;
   for (const f of assets) {
@@ -226,16 +283,30 @@ async function uploadOnce(token, owner, repo, releaseId, file) {
 
     const mb = (fs.statSync(path.join(ROOT, f)).size / 1024 / 1024).toFixed(1);
     let ok = false;
-    for (let i = 1; i <= 3 && !ok; i++) {
-      console.log('上传 ' + name + ' (' + mb + ' MB) · 第 ' + i + '/3 次…');
+    for (let i = 0; i < order.length && !ok; i++) {
+      const via = order[i];
+      console.log('上传 ' + name + ' (' + mb + ' MB) · 第 ' + (i + 1) + '/' + order.length + ' 次 · ' + via + '…');
       try {
-        const j = await uploadOnce(token, owner, repo, rel.id, f);
-        console.log('  ✔ ' + j.name + '  ' + (j.size / 1024 / 1024).toFixed(1) + ' MB');
-        console.log('    ' + j.browser_download_url);
-        ok = true;
+        if (via === 'curl') {
+          const r = curlUpload(token, owner, repo, rel.id, f);
+          if (r.ok) {
+            console.log('  ✔ ' + r.name + '  ' + (r.size / 1024 / 1024).toFixed(1) + ' MB');
+            ok = true;
+          } else {
+            console.log('  ✗ 失败: ' + r.error);
+            await cleanIncomplete(token, owner, repo, rel.id).catch(() => {});
+            await sleep(4000);
+          }
+        } else {
+          const j = await uploadOnce(token, owner, repo, rel.id, f);
+          console.log('  ✔ ' + j.name + '  ' + (j.size / 1024 / 1024).toFixed(1) + ' MB');
+          console.log('    ' + j.browser_download_url);
+          ok = true;
+        }
       } catch (e) {
         console.log('  ✗ 失败: ' + (e.cause?.code || e.message));
-        if (i < 3) { await cleanIncomplete(token, owner, repo, rel.id).catch(() => {}); await sleep(4000); }
+        await cleanIncomplete(token, owner, repo, rel.id).catch(() => {});
+        await sleep(4000);
       }
     }
     if (!ok) allOk = false;
