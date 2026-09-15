@@ -378,12 +378,21 @@
 
       <fieldset>
         <legend>角色卡 / 预设提示词（可留空）</legend>
-        <p class="dim">支持纯文本，或 JSON：{"system": "..."}。留空则用内置默认；填了角色卡将接管助手人设。</p>
+        <p class="dim">支持纯文本，或 JSON 角色卡（兼容多种字段名与角色卡格式）。
+          留空则用内置默认；填了角色卡将接管助手人设。</p>
+        <div class="role-import">
+          <button id="btn-role-import" type="button" class="mini-btn">📁 导入 .json 角色卡</button>
+          <button id="btn-role-test" type="button" class="mini-btn">🔍 查看解析结果</button>
+          <button id="btn-role-clear" type="button" class="mini-btn danger">🧹 清除人设</button>
+          <input id="role-file" type="file" accept=".json,application/json" hidden>
+        </div>
+        <div id="role-info" class="dim role-info"></div>
         <textarea id="ai-rolecard" rows="4" placeholder="可留空
-例如：你是一个毒舌但热心的猫娘…"></textarea>
+可以粘贴纯文本人设，或整段 JSON 角色卡（也可用上面的按钮导入 .json 文件）"></textarea>
         <p class="dim">用户画像（可留空，作为长期上下文）</p>
         <textarea id="ai-profile" rows="2" placeholder="可留空，例如：INTP，容易过度思考不行动"></textarea>
         <button id="btn-ai-role-save" type="button" class="mini-btn primary">保存角色卡 / 画像</button>
+        <p class="dim role-tip">在 AI 对话里输入 <b>test</b> 可查看当前人设，输入 <b>清除</b> 可清空人设。</p>
       </fieldset>
 
       <div class="dlg-actions">

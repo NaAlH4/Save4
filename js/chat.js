@@ -29,27 +29,123 @@
   var sending = false;
   var historyOpen = false;
 
-  /* ══════════ 提示词（预设留白，供角色卡接管） ══════════ */
-  // 读取角色卡：支持存字符串或 {name, system|prompt} 对象，解析出 system 段
-  function roleSystem() {
-    var raw = S().read(ROLE_KEY, '');
-    if (!raw) return '';
-    if (typeof raw === 'string') {
-      var t = raw.trim();
-      if (!t) return '';
-      // 若看起来是 JSON，尝试解析出 system/prompt 字段
-      if (t[0] === '{') {
-        try {
-          var obj = JSON.parse(t);
-          return (obj.system || obj.prompt || obj.description || '').trim();
-        } catch (e) { return t; }
+  /* ══════════ 角色卡解析（支持多种 JSON 格式 + 容错） ══════════
+     背景：角色卡格式五花八门，之前只认 system/prompt/description，
+     导致「合法 JSON 但字段不同 → 被忽略」「非法 JSON → 整段原文当人设」两个极端。
+     现在：优先按已知字段名提取；未知字段也会被逐条列出，保证“导入即生效”。 */
+
+  // 字段名 → 中文标签（按优先级排序；中英文都支持）
+  var ROLE_FIELDS = [
+    ['system', '系统指令'], ['system_prompt', '系统指令'], ['prompt', '系统指令'],
+    ['instructions', '指令'], ['instruction', '指令'],
+    ['post_history_instructions', '补充指令'],
+    ['name', '名称'], ['char_name', '名称'], ['character', '名称'], ['名称'], ['名字'],
+    ['identity', '身份'], ['身份'], ['role', '角色'], ['角色'],
+    ['description', '设定'], ['persona', '人设'], ['personality', '性格'], ['profile', '简介'],
+    ['人设'], ['设定'], ['简介'], ['描述'], ['性格'], ['外貌'],
+    ['scenario', '背景'], ['world', '世界观'], ['background', '背景'], ['背景'], ['世界观'], ['场景'],
+    ['speech', '说话风格'], ['speaking_style', '说话风格'], ['style', '风格'], ['tone', '语气'],
+    ['说话风格'], ['语言风格'], ['语气'], ['口头禅'],
+    ['mes_example', '对话示例'], ['example_dialogue', '对话示例'], ['examples', '示例'], ['示例'],
+    ['first_mes', '开场白'], ['greeting', '开场白'], ['开场白'],
+    ['likes', '喜好'], ['dislikes', '厌恶'], ['爱好'], ['厌恶'],
+    ['relationship', '与用户关系'], ['关系'],
+    ['major', '专业'], ['age', '年龄'], ['gender', '性别'], ['gender_identity', '性别认同'],
+    ['real_name', '真实姓名'], ['self_name', '自称']
+  ];
+  // 明显是图片/元数据、不应塞进提示词的字段
+  var ROLE_SKIP = /^(avatar|image|img|png|icon|photo|banner|thumbnail|base64|data|id|uuid|create_date|creation_date|date|version|spec|spec_version|talkativeness|fav|tags|creator|creator_notes|character_book|extensions|lorebook|world_info)$/i;
+
+  /* 宽松解析：先把常见的 JS 对象写法修成合法 JSON，再 parse */
+  function lenientParse(text) {
+    var t = String(text || '').trim();
+    try { return { ok: true, obj: JSON.parse(t), repaired: false }; } catch (e) {}
+    var r = t
+      .replace(/\/\/[^\n\r]*/g, '')                 // 去行注释
+      .replace(/\/\*[\s\S]*?\*\//g, '')             // 去块注释
+      .replace(/,\s*([}\]])/g, '$1')                // 去尾逗号
+      .replace(/([{,]\s*)([A-Za-z_$\u4e00-\u9fa5][\w$\-\u4e00-\u9fa5]*)(\s*:)/g, '$1"$2"$3') // 未加引号的键
+      .replace(/:\s*'([^'\\]*(?:\\.[^'\\]*)*)'/g, ': "$1"'); // 单引号值
+    try { return { ok: true, obj: JSON.parse(r), repaired: true }; } catch (e) {}
+    return { ok: false, obj: null, repaired: false };
+  }
+
+  /* 取"看起来像内容"的字符串（过滤空串、超长 base64） */
+  function usableString(v) {
+    if (typeof v !== 'string') return '';
+    var s = v.trim();
+    if (!s) return '';
+    if (s.length > 4000) return '';                 // 可能是内嵌图片
+    if (/^data:image\//i.test(s)) return '';
+    if (s.length > 200 && !/[\u4e00-\u9fa5]/.test(s) && !/\s/.test(s)) return ''; // 疑似 base64
+    return s;
+  }
+
+  /* 把解析出来的对象整理成可读的人设文本 */
+  function buildFromObject(obj, avatarsIgnored) {
+    // 角色卡 V2：内容在 data 里
+    var root = (obj && obj.data && typeof obj.data === 'object') ? obj.data : obj;
+    var used = {};
+    var parts = [];
+    var fields = [];
+
+    ROLE_FIELDS.forEach(function (pair) {
+      var key = pair[0], label = pair[1] || pair[0];
+      if (used[key]) return;
+      var s = usableString(root[key]);
+      if (!s) return;
+      used[key] = 1;
+      fields.push(label);
+      parts.push((label === '名称' ? '你是「' + s + '」' : label + '：' + s));
+    });
+
+    // 未知字段：值得展示的一并列出（保证任意格式的角色卡都能生效）
+    Object.keys(root).forEach(function (k) {
+      if (used[k] || ROLE_SKIP.test(k)) return;
+      var s = usableString(root[k]);
+      if (!s) return;
+      fields.push(k);
+      parts.push(k + '：' + s);
+    });
+
+    var name = usableString(root.name) || usableString(root.char_name) ||
+               usableString(root['名称']) || usableString(root['名字']) ||
+               usableString(root.character) || '';
+    return { text: parts.join('\n'), name: name, fields: fields };
+  }
+
+  /* 对外：把任意角色卡（纯文本 / JSON 字符串 / 对象）解析成人设文本 */
+  function parseRoleCard(raw) {
+    if (raw && typeof raw === 'object') {
+      var r0 = buildFromObject(raw, true);
+      return { text: r0.text, name: r0.name, fields: r0.fields, format: 'object', ok: !!r0.text };
+    }
+    var t = String(raw == null ? '' : raw).trim();
+    if (!t) return { text: '', name: '', fields: [], format: 'empty', ok: false };
+
+    var looksJson = (t[0] === '{' || t[0] === '[');
+    if (looksJson) {
+      var p = lenientParse(t);
+      if (p.ok && p.obj && typeof p.obj === 'object') {
+        var r = buildFromObject(p.obj, true);
+        if (r.text) {
+          return {
+            text: r.text, name: r.name, fields: r.fields,
+            format: p.repaired ? 'json(已修复格式)' : 'json', ok: true
+          };
+        }
+        // JSON 合法但一个可用字段都没有 → 不要静默失效，退回原文并标注
+        return { text: t, name: '', fields: [], format: 'json(无已知字段,按原文)', ok: true };
       }
-      return t; // 纯文本角色设定
+      // 解析失败 → 仍按原文使用，但明确标注，便于用户察觉
+      return { text: t, name: '', fields: [], format: '原始文本(非法JSON)', ok: true };
     }
-    if (typeof raw === 'object') {
-      return (raw.system || raw.prompt || raw.description || '').trim();
-    }
-    return '';
+    return { text: t, name: '', fields: [], format: '纯文本', ok: true };
+  }
+
+  /* ══════════ 提示词（角色卡优先） ══════════ */
+  function roleSystem() {
+    return parseRoleCard(S().read(ROLE_KEY, '')).text;
   }
 
   function basePrompt() {
@@ -300,21 +396,80 @@
     messages.push({ role: role, content: content, reasoning: reasoning || '' });
   }
 
+  /* ══════════ 人设指令：test 查看当前人设 / 清除 清空人设 ══════════ */
+  var TEST_CMD = /^(test|\/test|测试|查看人设|人设测试)$/i;
+  var CLEAR_CMD = /^(\/clear|clear|清除|清除人设|清空人设|重置人设)$/i;
+  var CLEAR_MEM_CMD = /^(清除记忆|清空记忆|\/clearmem)$/i;
+
+  /* 桌宠气泡说话（AI 回复时同步冒泡） */
+  function say(text, ms) {
+    if (!global.Save4.bubble) return;
+    var t = String(text || '').replace(/\s+/g, ' ').trim();
+    if (!t) return;
+    if (t.length > 60) t = t.slice(0, 60) + '…';
+    global.Save4.bubble.enqueue({ text: t, duration: ms || 6000 });
+    if (global.Save4.pet) global.Save4.pet.celebrate(900);
+  }
+
+  /* 处理本地指令；返回 true 表示已处理（不再请求 AI） */
+  function handleLocalCommand(text) {
+    // ① 加入待办
+    var todo = parseTodoCommand(text);
+    if (todo) {
+      pushMsg('user', text);
+      addToTodo(todo);
+      pushMsg('assistant', '✅ 已加入待办：' + todo);
+      render(); say('已加入待办：' + todo);
+      return true;
+    }
+    // ② test：输出当前人设
+    if (TEST_CMD.test(text)) {
+      var parsed = parseRoleCard(S().read(ROLE_KEY, ''));
+      var profile = S().read(PROFILE_KEY, '');
+      var mem = S().read(MEMORY_KEY, []);
+      var out = '【当前人设】' + (parsed.text
+        ? '\n' + parsed.text
+        : '\n（未设置角色卡，使用内置默认助手）');
+      out += '\n\n【格式】' + parsed.format
+        + (parsed.name ? ' · 名称：' + parsed.name : '')
+        + (parsed.fields && parsed.fields.length ? ' · 识别字段：' + parsed.fields.join('、') : '');
+      out += '\n【用户画像】' + (profile ? profile : '（空）');
+      out += '\n【长期记忆】' + (mem && mem.length ? mem.length + ' 条摘要' : '（空）');
+      out += '\n【注入模式】' + (mode === 'struct' ? '认知解构' : '情绪安抚');
+      pushMsg('user', text);
+      pushMsg('assistant', out);
+      render(); say('人设已输出到对话里');
+      return true;
+    }
+    // ③ 清除：清空人设（并重置对话，避免旧人设的风格借着历史残留）
+    if (CLEAR_CMD.test(text)) {
+      S().write(ROLE_KEY, '');
+      messages = [];            // 直接重置，不经过 newConv（避免顺带开关历史面板）
+      convId = null;
+      pushMsg('assistant', '🧹 已清除角色卡设定，并重置了当前对话。\n'
+        + '现在的人设：内置默认助手（温柔克制）。\n'
+        + '小提示：长期记忆摘要仍会作为背景注入；若要一并清空，发送「清除记忆」。');
+      render(); say('已清除人设并重置对话');
+      return true;
+    }
+    // ④ 清除记忆（处理人设残留的间接影响）
+    if (CLEAR_MEM_CMD.test(text)) {
+      S().write(MEMORY_KEY, []);
+      pushMsg('user', text);
+      pushMsg('assistant', '🧹 已清空长期记忆摘要。');
+      render(); say('已清空长期记忆');
+      return true;
+    }
+    return false;
+  }
+
   function send(text) {
     if (sending) return;
     text = String(text || '').trim();
     if (!text) return;
 
-    // ① 指令：用户明确说「加入待办」等 → 直接加入，不再请求 AI
-    var cmd = parseTodoCommand(text);
-    if (cmd) {
-      pushMsg('user', text);
-      addToTodo(cmd);
-      pushMsg('assistant', '✅ 已加入待办：' + cmd);
-      render();
-      els.input.value = '';
-      return;
-    }
+    // 本地指令优先（加入待办 / test / 清除 …）
+    if (handleLocalCommand(text)) { els.input.value = ''; return; }
 
     if (!configReady()) {
       els.body.innerHTML = '<div class="chat-empty dim">请先在 设置 → AI 对话 配置接口地址与模型后再聊～</div>';
@@ -335,8 +490,10 @@
       setSendState(false);
       if (r.ok) {
         pushMsg('assistant', r.text, r.reasoning);
+        say(r.text);                       // 桌宠冒泡说话
       } else {
         pushMsg('assistant', '⚠️ ' + (r.error || '请求失败，请检查 AI 配置或网络。'));
+        say('呜…出错了：' + (r.error || '请求失败'), 8000);
       }
       render();
       makeSummary();  // 触发摘要（长期记忆）
@@ -510,6 +667,12 @@
     getMode: function () { return mode; },
     messages: function () { return messages.slice(); },
     configReady: configReady,
-    getConfig: getConfig
+    getConfig: getConfig,
+    // 供设置界面使用：
+    parseRoleCard: parseRoleCard,                  // 解析任意角色卡 → {text,name,fields,format,ok}
+    resolvedPersona: function () { return roleSystem(); },
+    setRoleCard: function (raw) { S().write(ROLE_KEY, raw == null ? '' : raw); },
+    getRoleCard: function () { return S().read(ROLE_KEY, ''); },
+    say: say                                      // 让桌宠冒泡说话
   };
 })(window);

@@ -238,15 +238,69 @@
 
     // 角色卡 / 用户画像
     var roleEl = $('ai-rolecard'), profEl = $('ai-profile'), roleSave = $('btn-ai-role-save');
+    var roleInfo = $('role-info'), roleFile = $('role-file');
     var roleVal = store.read('ai.rolecard', '');
     var profVal = store.read('ai.profile', '');
     roleEl.value = (typeof roleVal === 'string') ? roleVal : JSON.stringify(roleVal || {});
     profEl.value = profVal || '';
+
+    // 显示解析结果，让「导入是否生效」一目了然
+    function showRoleInfo(prefix) {
+      var p = chat.parseRoleCard(roleEl.value);
+      var msg;
+      if (!p.text) {
+        msg = '当前：未设置角色卡（使用内置默认助手）';
+      } else {
+        msg = '当前解析：' + p.format
+          + (p.name ? ' · 名称「' + p.name + '」' : '')
+          + (p.fields && p.fields.length ? ' · 字段：' + p.fields.join('、') : '')
+          + ' · 生效 ' + p.text.length + ' 字';
+      }
+      roleInfo.textContent = (prefix ? prefix + ' ' : '') + msg;
+    }
+
     roleSave.addEventListener('click', function () {
       store.write('ai.rolecard', roleEl.value.trim() || '');
       store.write('ai.profile', profEl.value.trim() || '');
+      showRoleInfo('✅ 已保存 ·');
       bubble.enqueue({ text: '✅ 角色卡 / 画像已保存' });
     });
+
+    // 📁 导入 .json 角色卡（直接读文件）
+    $('btn-role-import').addEventListener('click', function () {
+      roleFile.value = '';
+      roleFile.click();
+    });
+    roleFile.addEventListener('change', function () {
+      var f = roleFile.files && roleFile.files[0];
+      if (!f) return;
+      var reader = new FileReader();
+      reader.onload = function () {
+        roleEl.value = String(reader.result || '');
+        store.write('ai.rolecard', roleEl.value.trim());   // 导入即生效
+        showRoleInfo('✅ 已导入「' + f.name + '」·');
+        bubble.enqueue({ text: '✅ 已导入角色卡：' + f.name });
+      };
+      reader.onerror = function () { bubble.enqueue({ text: '⚠️ 读取文件失败' }); };
+      reader.readAsText(f, 'utf-8');
+    });
+
+    // 🔍 查看解析结果（把人设原文显示在提示区，可确认内容是否正确）
+    $('btn-role-test').addEventListener('click', function () {
+      var p = chat.parseRoleCard(roleEl.value);
+      if (!p.text) { showRoleInfo('🔍'); return; }
+      roleInfo.textContent = '🔍 将作为人设注入的内容（' + p.format + '）： ' + p.text;
+    });
+
+    // 🧹 清除人设
+    $('btn-role-clear').addEventListener('click', function () {
+      roleEl.value = '';
+      store.write('ai.rolecard', '');
+      showRoleInfo('🧹 已清除 ·');
+      bubble.enqueue({ text: '🧹 已清除角色卡人设' });
+    });
+
+    showRoleInfo('');
 
     aiEl.save.addEventListener('click', function () {
       store.write(aiKey, {
