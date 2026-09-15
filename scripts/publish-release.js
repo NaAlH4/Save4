@@ -220,11 +220,17 @@ function curlUpload(token, owner, repo, releaseId, file) {
   }
 
   const dir = path.join(ROOT, 'release');
-  const assets = fs.existsSync(dir)
-    ? fs.readdirSync(dir).filter((f) => /\.exe$/i.test(f)).map((f) => path.join('release', f))
-    : [];
+  const allExe = fs.existsSync(dir) ? fs.readdirSync(dir).filter((f) => /\.exe$/i.test(f)) : [];
+  // 只上传「版本号与当前 package.json 一致」的产物。
+  // 否则 release/ 里留着上个版本的 exe 时，会把 0.1.3 的安装包混进 0.1.4 的 Release。
+  const esc = p.version.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const verRe = new RegExp('(^|[^0-9.])' + esc + '([^0-9]|$)');
+  const assets = allExe.filter((f) => verRe.test(f)).map((f) => path.join('release', f));
+  const stale = allExe.filter((f) => !verRe.test(f));
+  if (stale.length) console.log('跳过其它版本的产物（版本号非 ' + p.version + '）: ' + stale.join(', ') + '\n');
   if (!assets.length) {
-    console.error('release/ 下没有 exe。请先构建：npm run dist');
+    console.error('release/ 下没有 ' + p.version + ' 的 exe（现有: ' + (allExe.join(', ') || '空') + '）'
+      + '\n请先构建：npm run dist');
     process.exit(1);
   }
 
