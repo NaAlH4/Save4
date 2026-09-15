@@ -1,14 +1,15 @@
 /* ════════════════════════════════════════════════════════════
-   Save4 — chat.js  （M5 AI 对话消化系统，文档功能三·核心亮点）
-   双模式:
-   - 情绪安抚(soothe): 温暖共情陪伴，先引导说出身体感受，再给情感支持
-   - 认知解构(struct): 冷静苏格拉底式提问，拆解问题并促进产出「最小行动」
+   Save4 — chat.js  （M5 AI 对话）
+   设计原则：不做任何预设。
+   - 不预设人格、不预设话术、不预设「模式」：AI 就是一个空白对话模型
+   - 唯一的人设来源是**角色卡**（你在设置里导入的 .json / 文本）
+   - 没设角色卡时连 system 消息都不发，完全交给模型与服务商默认行为
+   - 可选注入（都是你自己填的）：用户画像、历史对话摘要（长期记忆）
    能力:
    - OpenAI 兼容 API（桌面版走主进程代理绕 CORS；网页版直连 fetch）
    - 展示模型「思考过程」(reasoning_content，如 deepseek-reasoner)
    - 对话历史存 IndexedDB（storage_db.js）
    - 对话结束自动生成摘要（100-200字）作长期记忆上下文
-   - 预设提示词可留白；预留角色卡(JSON 或文本)接入点
    ════════════════════════════════════════════════════════════ */
 (function (global) {
   'use strict';
@@ -22,7 +23,6 @@
   var MEMORY_KEY = 'ai.memory';             // [{date, summary}] 最近 N 条摘要
   var ROLE_KEY = 'ai.rolecard';             // 角色卡：可留空；JSON/文本
 
-  var mode = 'soothe';
   var messages = [];                        // 本次对话 {role, content, reasoning?}
   var convId = null;
   var els = {};
@@ -147,37 +147,30 @@
     return { text: t, name: '', fields: [], format: '纯文本', ok: true };
   }
 
-  /* ══════════ 提示词（角色卡优先） ══════════ */
+  /* 角色卡 → 人设文本（唯一的人设来源） */
   function roleSystem() {
     return parseRoleCard(S().read(ROLE_KEY, '')).text;
   }
 
+  /* ══════════ 提示词：不预设任何人格/话术，只注入你给的东西 ══════════
+     唯一人设来源 = 角色卡。没有角色卡时返回空串，调用方会连 system 消息都不发，
+     让模型按服务商默认行为工作（真正的「空白对话模型」）。 */
   function basePrompt() {
     var role = roleSystem();
     var profile = S().read(PROFILE_KEY, '');
     var memory = S().read(MEMORY_KEY, []);
 
-    var ctx = role
-      ? ('【角色设定】' + role)
-      : '你是 Save4 桌面桌宠的 AI 助手，用中文回复，语气温柔克制，一次话不要过长。';
-    // 用户画像 + 长期记忆（作为系统背景注入）
-    if (profile) ctx += '\n\n【用户画像】' + profile;
+    var parts = [];
+    // 唯一的「预设」：让模型照着导入的设定扮演。没有角色卡时这句也不会出现。
+    if (role) parts.push('【角色设定】请以下述设定扮演该角色，保持它的身份、语气与说话方式，不要跳出角色：\n' + role);
+    if (profile) parts.push('【用户画像】' + profile);
     if (memory && memory.length) {
       var recent = memory.slice(0, 5).map(function (m) {
         return '· ' + (m.date || '') + '：' + m.summary;
       }).join('\n');
-      ctx += '\n\n【之前的对话摘要（长期记忆）】\n' + recent;
+      parts.push('【之前的对话摘要（长期记忆）】\n' + recent);
     }
-    return ctx;
-  }
-
-  function systemPrompt(m) {
-    var base = basePrompt();
-    // 仅附加简短模式提示；具体话术可留空交由角色卡/后续精细
-    if (m === 'struct') {
-      return base + '\n\n【模式：认知解构】通过提问帮用户拆解问题，最后引导产出一个小而可立即执行的「最小行动」。';
-    }
-    return base + '\n\n【模式：情绪安抚】先关心用户的感受与身体状态，给予共情支持，不急于讲道理或给方案。';
+    return parts.join('\n\n');
   }
 
   /* ══════════ API 调用（读取 content + reasoning_content） ══════════ */
@@ -340,14 +333,11 @@
   // 支持「加入待办 / 加到待办 / 加入代办(常见误写) / 记到待办 / 加个待办」等说法
   var TODO_TRIGGER = /(加入待办|加到待办|加进待办|加入代办|加到代办|加个待办|新增待办|添加待办|添加到待办|记到待办|记入待办|加入\s*todo|add\s*to\s*todo)/i;
 
-  /* 取上一条 AI 回复里的「最小行动」句子（作为指令未带内容时的兜底） */
-  function lastAssistantAction() {
+  /* 「加入待办」未带内容时的兜底：取上一条 AI 回复的最后一句（不做任何预设假设） */
+  function lastAssistantSentence() {
     for (var i = messages.length - 1; i >= 0; i--) {
       if (messages[i].role !== 'assistant') continue;
       var parts = splitSentences(messages[i].content).map(function (p) { return p.trim(); }).filter(Boolean);
-      for (var j = 0; j < parts.length; j++) {
-        if (/最小行动|下一步|先做|行动/.test(parts[j])) return parts[j].slice(0, 120);
-      }
       if (parts.length) return parts[parts.length - 1].slice(0, 120);
       return null;
     }
@@ -363,7 +353,7 @@
       .replace(/^(把|帮我|请|麻烦|给我)\s*/, '')
       .trim();
     if (rest.length >= 2) return rest.slice(0, 120);
-    var fallback = lastAssistantAction();
+    var fallback = lastAssistantSentence();
     return fallback || null;
   }
 
@@ -383,7 +373,7 @@
       return (m.role === 'user' ? '用户：' : 'AI：') + m.content;
     }).join('\n');
     var prompt = [
-      { role: 'system', content: '你是一个摘要助手。请用简洁的中文给下面这段对话写一段 100-200 字的摘要，提炼用户的情绪、关键困惑与已经产出的行动。只输出摘要本身。' },
+      { role: 'system', content: '请用简洁的中文把下面这段对话压缩成 100-200 字的摘要，记下关键事实、结论与待办。只输出摘要本身。' },
       { role: 'user', content: turn }
     ];
     callAI(prompt).then(function (r) {
@@ -442,13 +432,13 @@
       var mem = S().read(MEMORY_KEY, []);
       var out = '【当前人设】' + (parsed.text
         ? '\n' + parsed.text
-        : '\n（未设置角色卡，使用内置默认助手）');
+        : '\n（未设角色卡 → 空白对话模型，不注入任何预设）');
       out += '\n\n【格式】' + parsed.format
         + (parsed.name ? ' · 名称：' + parsed.name : '')
         + (parsed.fields && parsed.fields.length ? ' · 识别字段：' + parsed.fields.join('、') : '');
       out += '\n【用户画像】' + (profile ? profile : '（空）');
       out += '\n【长期记忆】' + (mem && mem.length ? mem.length + ' 条摘要' : '（空）');
-      out += '\n【注入模式】' + (mode === 'struct' ? '认知解构' : '情绪安抚');
+      out += '\n【人设来源】' + (parsed.text ? '角色卡' : '未设角色卡（空白对话模型，不注入任何预设）');
       pushMsg('user', text);
       pushMsg('assistant', out);
       render(); say('人设已输出到对话里');
@@ -461,7 +451,7 @@
       convId = null;
       syncRolePanel();
       pushMsg('assistant', '🧹 已清除角色卡设定，并重置了当前对话。\n'
-        + '现在的人设：内置默认助手（温柔克制）。\n'
+        + '现在的人设：空白对话模型（不注入任何预设，模型按原样回复）。\n'
         + '小提示：长期记忆摘要仍会作为背景注入；若要一并清空，发送「清除记忆」。');
       render(); say('已清除人设并重置对话');
       return true;
@@ -496,7 +486,9 @@
     sending = true;
     setSendState(true);
 
-    var history = [{ role: 'system', content: systemPrompt(mode) }]
+    // 没有角色卡/画像/记忆时不发 system 消息 —— 保持模型原样（空白对话）
+    var sys = basePrompt();
+    var history = (sys ? [{ role: 'system', content: sys }] : [])
       .concat(messages.map(function (m) { return { role: m.role, content: m.content }; }));
 
     callAI(history).then(function (r) {
@@ -542,7 +534,7 @@
         row.className = 'hist-row';
         row.innerHTML = '<div class="hist-title">' + esc(c.title || '未命名') + '</div>'
           + '<div class="hist-meta">' + esc(friendlyDate(c.date)) + ' · '
-          + (c.mode === 'struct' ? '认知解构' : (c.mode === 'soothe' ? '情绪安抚' : '')) + '</div>';
+          + ((c.messages || []).length) + ' 条</div>';
         row.addEventListener('click', function () { openConv(c.id); });
         var del = document.createElement('button');
         del.className = 'hist-del'; del.textContent = '✕'; del.title = '删除';
@@ -562,8 +554,6 @@
         // 兼容旧记录：没有 reasoning 字段
         return { role: m.role, content: m.content, reasoning: m.reasoning || '' };
       });
-      mode = c.mode || 'soothe';
-      setMode(mode, false);
       convId = id;
       toggleHistory();
       render();
@@ -578,9 +568,9 @@
   }
 
   /* ══════════ 打开/关闭 ══════════ */
-  function open(m) {
+  function open() {
     els.chat.classList.remove('hidden');
-    if (m) setMode(m, false);
+    refreshRoleTag();          // 期间可能改过角色卡，打开时同步顶部显示
     render();
     els.input.focus();
   }
@@ -591,7 +581,6 @@
         id: convId || (Date.now().toString(36) + Math.random().toString(36).slice(2, 6)),
         title: (firstUser && firstUser.content) ? firstUser.content.slice(0, 24) : '未命名',
         date: new Date().toISOString(),
-        mode: mode,
         messages: messages.slice()
       };
       db.save(item);
@@ -600,12 +589,21 @@
     els.chat.classList.add('hidden');
   }
 
-  /* ══════════ 模式切换 ══════════ */
-  function setMode(m, rerender) {
-    mode = (m === 'struct') ? 'struct' : 'soothe';
-    var btns = document.querySelectorAll('.chat-mode-btn');
-    btns.forEach(function (b) { b.classList.toggle('on', b.dataset.mode === mode); });
-    if (rerender !== false) render();
+  /* ══════════ 顶部「当前扮演谁」（人设只来自角色卡） ══════════ */
+  function refreshRoleTag() {
+    var el = document.getElementById('chat-role');
+    if (!el) return;
+    var p = parseRoleCard(S().read(ROLE_KEY, ''));
+    if (p.text) {
+      el.textContent = '🎭 扮演：' + (p.name || '已设角色卡');
+      el.title = '人设来自角色卡（' + p.format + '）：\n' + p.text;
+      el.classList.remove('empty');
+    } else {
+      el.textContent = '🎭 未设人设 · 空白对话模型';
+      el.title = '未导入角色卡：不会注入任何预设人格或话术，模型按原样回复。\n'
+        + '在 设置 → AI 对话 里导入 .json 角色卡，它就会照着扮演。';
+      el.classList.add('empty');
+    }
   }
 
   /* ══════════ 初始化 ══════════ */
@@ -617,12 +615,7 @@
     els.historyPanel = document.getElementById('chat-history-panel');
     els.historyList = document.getElementById('chat-history-list');
 
-    // 模式按钮：阻断祖先(标题栏)的拖拽 pointerdown，确保点击生效
-    document.querySelectorAll('.chat-mode-btn').forEach(function (b) {
-      b.addEventListener('pointerdown', function (e) { e.stopPropagation(); });
-      b.addEventListener('click', function () { setMode(b.dataset.mode, true); });
-    });
-    // 标题栏操作按钮：同样阻断拖拽
+    // 标题栏操作按钮：阻断祖先(标题栏)的拖拽 pointerdown，确保点击生效
     ['chat-close', 'chat-clear', 'chat-history'].forEach(function (id) {
       var el = document.getElementById(id);
       if (el) el.addEventListener('pointerdown', function (e) { e.stopPropagation(); });
@@ -657,17 +650,17 @@
     });
     els.body.addEventListener('scroll', hideSentMenu);
 
-    // 拖拽（标题栏移动；模式按钮/输入栏等交互区排除在外）
+    // 拖拽（标题栏移动；顶部人设标签/输入栏等交互区排除在外）
     if (drag) {
       drag.makeDraggable(els.chat, {
         handle: document.getElementById('chat-header'),
-        ignore: '.chat-mode, .chat-actions, .chat-inputbar, .chat-history-panel, .sent-menu',
+        ignore: '.chat-role, .chat-actions, .chat-inputbar, .chat-history-panel, .sent-menu',
         onMove: dragOpts && dragOpts.onMove,
         onEnd: dragOpts && dragOpts.onEnd
       });
     }
 
-    setMode('soothe', false);
+    refreshRoleTag();
     render();
   }
 
@@ -677,8 +670,6 @@
     open: open,
     close: close,
     send: send,
-    setMode: function (m) { setMode(m, true); },
-    getMode: function () { return mode; },
     messages: function () { return messages.slice(); },
     configReady: configReady,
     getConfig: getConfig,
@@ -687,6 +678,8 @@
     resolvedPersona: function () { return roleSystem(); },
     setRoleCard: function (raw) { S().write(ROLE_KEY, raw == null ? '' : raw); },
     getRoleCard: function () { return S().read(ROLE_KEY, ''); },
+    refreshRoleTag: refreshRoleTag,                // 角色卡变动后刷新顶部「扮演：xxx」
+    basePrompt: basePrompt,                        // 实际会注入的 system 内容（空串=不发 system）
     say: say                                      // 让桌宠冒泡说话
   };
 })(window);

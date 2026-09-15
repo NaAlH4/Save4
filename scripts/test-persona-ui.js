@@ -64,8 +64,8 @@ async function serveAppFile(request) {
   }
 }
 
-/* ---------- 主进程桩：记录 AI 调用内容，验证本地指令不发请求 ---------- */
-const aiPrompts = [];   // 每次请求的最后一条 user 消息
+/* ---------- 主进程桩：记录 AI 调用内容，验证本地指令不发请求 / system 无预设 ---------- */
+const aiCalls = [];     // [{ sys, lastUser }]  sys=null 表示没有 system 消息
 const AI_REPLY = '我是你的桌宠呀，今天也一起把想法存档吧';
 
 function stubIpc() {
@@ -77,12 +77,12 @@ function stubIpc() {
   ipcMain.handle('game:wallpaper', () => null);
   ipcMain.handle('ai:chat', (e, opts) => {
     const list = (opts && opts.messages) || [];
+    const sys = list.find((m) => m.role === 'system');
+    let lastUser = '';
     for (let i = list.length - 1; i >= 0; i--) {
-      if (list[i].role === 'user') {
-        aiPrompts.push(String(list[i].content).slice(0, 40));
-        break;
-      }
+      if (list[i].role === 'user') { lastUser = String(list[i].content); break; }
     }
+    aiCalls.push({ sys: sys ? String(sys.content) : null, lastUser });
     return { ok: true, text: AI_REPLY, reasoning: '' };
   });
 }
@@ -118,16 +118,35 @@ app.whenReady().then(async () => {
     return;
   }
 
-  /* 主进程侧断言：本地指令（test / 清除 / 清除记忆）绝不能触发 AI 请求。
-     预期只有「你好」那一轮，外加 makeSummary 的摘要轮（同一次对话的收尾）。 */
+  /* 主进程侧断言：本地指令（test / 清除 / 清除记忆）绝不能触发 AI 请求；
+     并且真正发出去的 system 里不能残留任何预设话术。 */
   const LOCAL = /^(test|\/test|测试|清除|清除人设|清空人设|重置人设|清除记忆|清空记忆|\/clear|\/clearmem)$/i;
-  const leaked = aiPrompts.filter((t) => LOCAL.test(t.trim()));
-  if (!leaked.length) report.pass.push('主进程：本地指令未发 AI 请求（共 ' + aiPrompts.length + " 次请求，均非指令）");
-  else report.fail.push('主进程：本地指令竟触发了 AI 请求 → ' + JSON.stringify(leaked));
-  if (aiPrompts[0] === '你好') report.pass.push('主进程：唯一真实对话确为「你好」');
-  else report.fail.push('主进程：首条 AI 请求的最后一条用户消息应为「你好」，实际 ' + JSON.stringify(aiPrompts[0]));
-  if (aiPrompts.length <= 2) report.pass.push('主进程：请求总数 ' + aiPrompts.length + '（回复 1 + 摘要 ≤1）');
-  else report.fail.push('主进程：请求总数异常 = ' + aiPrompts.length + ' → ' + JSON.stringify(aiPrompts));
+  // 摘要轮的判据只能是「摘要指令」本身；不能用 /摘要/ 泛匹配，
+  // 否则 system 里出现「【之前的对话摘要（长期记忆）】」的真实对话会被误判成摘要轮。
+  const isSummary = (c) => /压缩成|只输出摘要本身/.test(c.sys || '');
+  const replies = aiCalls.filter((c) => !isSummary(c));
+  const summaries = aiCalls.filter(isSummary);
+
+  const leaked = replies.filter((c) => LOCAL.test(c.lastUser.trim()));
+  if (!leaked.length) report.pass.push('主进程：本地指令未发 AI 请求（真实回复 ' + replies.length + ' 次，摘要 ' + summaries.length + ' 次）');
+  else report.fail.push('主进程：本地指令竟触发了 AI 请求 → ' + JSON.stringify(leaked.map((c) => c.lastUser)));
+  if (replies.length === 2) report.pass.push('主进程：恰好 2 轮真实对话（清空人设后一轮 + 设角色卡后一轮）');
+  else report.fail.push('主进程：真实对话轮数应为 2，实际 ' + replies.length + ' → ' + JSON.stringify(replies.map((c) => c.lastUser.slice(0, 20))));
+
+  // ① 未设角色卡 → 连 system 消息都不发（空白模型）
+  const blank = replies.find((c) => c.lastUser === '你好');
+  if (blank && blank.sys === null) report.pass.push('主进程：未设角色卡时未发送 system 消息（空白对话模型）');
+  else report.fail.push('主进程：未设角色卡时不应有 system → ' + JSON.stringify(blank && blank.sys));
+
+  // ② 设了角色卡 → system 只有【角色设定】，且无任何预设话术
+  const BANNED = /情绪安抚|认知解构|最小行动|温柔克制|苏格拉底|共情|先关心/;
+  const dirty = aiCalls.filter((c) => c.sys && BANNED.test(c.sys));
+  if (!dirty.length) report.pass.push('主进程：全部 ' + aiCalls.length + ' 次请求的 system 均无预设话术');
+  else report.fail.push('主进程：system 里残留预设话术 → ' + JSON.stringify(dirty.map((c) => c.sys.slice(0, 80))));
+  const withRole = replies.filter((c) => c.sys && /【角色设定】/.test(c.sys) && /刘哥/.test(c.sys));
+  if (withRole.length === 1) report.pass.push('主进程：设角色卡后 system 注入了【角色设定】+ 角色卡内容');
+  else report.fail.push('主进程：注入角色设定的请求数应为 1，实际 ' + withRole.length
+    + ' → ' + JSON.stringify(replies.map((c) => (c.sys || '(无 system)').slice(0, 40))));
 
   const line = '─'.repeat(64);
   console.log('\n' + line);

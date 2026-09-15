@@ -171,8 +171,39 @@ const LIUGE = {
   ok('特殊字符不被当成模板串执行', /反引号测试/.test(p.text), p.text.slice(0, 40));
 }
 
-/* ---------- 7. 经真实 storage.js 的读写往返（bug1/bug2 的落地检查） ---------- */
+/* ---------- 7. 注入内容：不预设任何人格/话术（用户明确要求） ---------- */
 {
+  chat.setRoleCard('');
+  store.write('ai.profile', '');
+  store.write('ai.memory', []);
+  ok('空状态：不注入任何 system（真正的空白对话模型）', chat.basePrompt() === '',
+    JSON.stringify(chat.basePrompt()));
+
+  chat.setRoleCard('你是刘哥，用东北腔。');
+  const b1 = chat.basePrompt();
+  ok('有角色卡：只注入【角色设定】', /【角色设定】/.test(b1) && /刘哥/.test(b1), b1.replace(/\n/g, '⏎'));
+  ok('有角色卡：没有任何「模式」段落',
+    !/【模式/.test(b1) && !/情绪安抚|认知解构|最小行动/.test(b1), b1.replace(/\n/g, '⏎'));
+
+  chat.setRoleCard('');
+  store.write('ai.profile', 'INTP，容易过度思考');
+  const b2 = chat.basePrompt();
+  ok('只有用户画像时：只注入【用户画像】', /【用户画像】/.test(b2) && !/【角色设定】/.test(b2),
+    b2.replace(/\n/g, '⏎'));
+
+  store.write('ai.profile', '');
+  store.write('ai.memory', [{ date: '2024-05-01', summary: '上次聊到换工作' }]);
+  const b3 = chat.basePrompt();
+  ok('只有长期记忆时：只注入摘要', /【之前的对话摘要/.test(b3) && /换工作/.test(b3) && !/【角色设定】/.test(b3),
+    b3.replace(/\n/g, '⏎'));
+
+  store.write('ai.memory', []);
+  chat.setRoleCard('');
+  ok('清空后回到完全空白（不再有内置默认助手文案）',
+    chat.basePrompt() === '' && !/内置默认助手|温柔克制/.test(b1 + b2 + b3));
+}
+
+/* ---------- 8. 经真实 storage.js 的读写往返（bug1/bug2 的落地检查） ---------- */{
   chat.setRoleCard(JSON.stringify(LIUGE));
   ok('往返：写入后立即生效（无需重启）', /刘哥/.test(chat.resolvedPersona()));
   ok('往返：存储里是 JSON 字符串（与 storage.js 约定一致）',

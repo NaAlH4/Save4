@@ -199,10 +199,8 @@
   <!-- ══════════ AI 对话窗口（M5，点击桌宠或右键菜单打开） ══════════ -->
   <div id="chat" class="layer chat hidden">
     <div id="chat-header" class="chat-header">
-      <div class="chat-mode" role="tablist">
-        <button class="chat-mode-btn on" data-mode="soothe">🫂 情绪安抚</button>
-        <button class="chat-mode-btn" data-mode="struct">🧩 认知解构</button>
-      </div>
+      <!-- 人设只来自角色卡：这里显示「现在在扮演谁」，没有预设模式可选 -->
+      <div id="chat-role" class="chat-role empty" title="人设来自角色卡">🎭 未设人设 · 空白对话模型</div>
       <span class="chat-actions no-drag">
         <button id="chat-clear" class="tool-btn" title="清空本次对话">🗑</button>
         <button id="chat-history" class="tool-btn" title="历史记录">🕘</button>
@@ -377,9 +375,10 @@
       </fieldset>
 
       <fieldset>
-        <legend>角色卡 / 预设提示词（可留空）</legend>
-        <p class="dim">支持纯文本，或 JSON 角色卡（兼容多种字段名与角色卡格式）。
-          留空则用内置默认；填了角色卡将接管助手人设。</p>
+        <legend>角色卡（人设唯一来源）</legend>
+        <p class="dim">AI 不做任何预设：不预设人格、不预设话术。
+          它扮演谁完全由这里的角色卡决定——支持纯文本或 JSON 角色卡（兼容多种字段名与角色卡格式）。
+          <b>留空 = 空白对话模型</b>，不注入任何 system 提示。</p>
         <div class="role-import">
           <button id="btn-role-import" type="button" class="mini-btn">📁 导入 .json 角色卡</button>
           <button id="btn-role-test" type="button" class="mini-btn">🔍 查看解析结果</button>

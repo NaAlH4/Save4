@@ -259,10 +259,16 @@
       roleInfo.textContent = (prefix ? prefix + ' ' : '') + msg;
     }
 
+    // 角色卡变动后，同步对话框顶部「扮演：xxx」（人设唯一来源）
+    function syncRoleTag() {
+      if (chat && chat.refreshRoleTag) chat.refreshRoleTag();
+    }
+
     roleSave.addEventListener('click', function () {
       store.write('ai.rolecard', roleEl.value.trim() || '');
       store.write('ai.profile', profEl.value.trim() || '');
       showRoleInfo('✅ 已保存 ·');
+      syncRoleTag();
       bubble.enqueue({ text: '✅ 角色卡 / 画像已保存' });
     });
 
@@ -279,6 +285,7 @@
         roleEl.value = String(reader.result || '');
         store.write('ai.rolecard', roleEl.value.trim());   // 导入即生效
         showRoleInfo('✅ 已导入「' + f.name + '」·');
+        syncRoleTag();
         bubble.enqueue({ text: '✅ 已导入角色卡：' + f.name });
       };
       reader.onerror = function () { bubble.enqueue({ text: '⚠️ 读取文件失败' }); };
@@ -297,6 +304,7 @@
       roleEl.value = '';
       store.write('ai.rolecard', '');
       showRoleInfo('🧹 已清除 ·');
+      syncRoleTag();
       bubble.enqueue({ text: '🧹 已清除角色卡人设' });
     });
 

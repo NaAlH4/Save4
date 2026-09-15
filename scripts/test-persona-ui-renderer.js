@@ -35,6 +35,18 @@
   ok('初始状态：人设为空', chat.resolvedPersona() === '', JSON.stringify(chat.resolvedPersona()));
   ok('初始状态：气泡隐藏', !bubShown());
 
+  /* ─────────── 0b. 预设已彻底移除 ─────────── */
+  ok('界面已无「情绪安抚 / 认知解构」模式按钮',
+    document.querySelectorAll('.chat-mode, .chat-mode-btn').length === 0,
+    'mode 元素数=' + document.querySelectorAll('.chat-mode, .chat-mode-btn').length);
+  ok('未设角色卡时顶部标签为「未设人设 · 空白对话模型」',
+    /未设人设/.test($('chat-role').textContent || '') && $('chat-role').classList.contains('empty'),
+    $('chat-role').textContent);
+  ok('未设角色卡时不注入任何 system 提示（真正的空白模型）',
+    chat.basePrompt() === '', JSON.stringify(chat.basePrompt()));
+  ok('页面已无 mode 相关接口（setMode / getMode 已删除）',
+    chat.setMode === undefined && chat.getMode === undefined);
+
   /* ─────────── 1. bug2：点「📁 导入 .json」按钮 → 文件真的被读进来 ─────────── */
   const roleFile = $('role-file');
   let clicked = 0;
@@ -75,6 +87,14 @@
     /刘哥/.test(persona) && /直爽/.test(persona) && /兄弟你这不行啊/.test(persona),
     'len=' + persona.length);
   ok('头像 base64 被过滤，未注入人设', !/base64/i.test(persona) && !/avatar/i.test(persona));
+  ok('顶部标签显示「扮演：刘哥」',
+    /扮演：刘哥/.test($('chat-role').textContent || '') && !$('chat-role').classList.contains('empty'),
+    $('chat-role').textContent);
+  const bp = chat.basePrompt();
+  ok('设了角色卡时 system 只注入角色设定（无任何模式/预设话术）',
+    /【角色设定】/.test(bp) && /刘哥/.test(bp)
+      && !/【模式|情绪安抚|认知解构|最小行动|温柔克制/.test(bp),
+    bp.replace(/\n/g, '⏎').slice(0, 100));
 
   /* ─────────── 2. 指令 test：输出当前人设（不发 AI 请求） ─────────── */
   drain();
@@ -84,11 +104,14 @@
   const t = last();
   ok('test：新增 用户+助手 两条消息', msgs().length === beforeTest + 2);
   ok('test：回复含【当前人设】且带上 刘哥', /【当前人设】/.test(t.content) && /刘哥/.test(t.content));
-  ok('test：回复含格式/字段/画像/记忆/注入模式',
-    ['【格式】', '识别字段：', '【用户画像】', '【长期记忆】', '【注入模式】']
+  ok('test：回复含格式/字段/画像/记忆/人设来源',
+    ['【格式】', '识别字段：', '【用户画像】', '【长期记忆】', '【人设来源】']
       .every((k) => t.content.indexOf(k) >= 0),
-    '缺少：' + ['【格式】', '识别字段：', '【用户画像】', '【长期记忆】', '【注入模式】']
+    '缺少：' + ['【格式】', '识别字段：', '【用户画像】', '【长期记忆】', '【人设来源】']
       .filter((k) => t.content.indexOf(k) < 0).join('') + ' ｜ ' + t.content.replace(/\n/g, '⏎').slice(0, 150));
+  ok('test：不再输出「注入模式」（预设已移除）',
+    !/【注入模式】/.test(t.content) && !/情绪安抚|认知解构/.test(t.content),
+    t.content.replace(/\n/g, '⏎').slice(0, 120));
   ok('test：桌宠冒泡说话', /人设已输出/.test(bubText()), bubText());
   drain();
 
@@ -111,8 +134,8 @@
     $('ai-rolecard').value === '' && /已清除角色卡人设/.test($('role-info').textContent || ''),
     'value.len=' + $('ai-rolecard').value.length + ' info=' + ($('role-info').textContent || '').slice(0, 30));
   ok('清除后 test 复核：已无角色卡',
-    (() => { chat.send('test'); return /（未设置角色卡/.test(last().content); })(),
-    last().content.slice(0, 40));
+    (() => { chat.send('test'); return /未设角色卡/.test(last().content) && /【人设来源】未设角色卡/.test(last().content); })(),
+    last().content.replace(/\n/g, '⏎').slice(0, 90));
   drain();
 
   /* ─────────── 5. 按钮 🧹 清除人设（设置面板路径） ─────────── */
@@ -151,6 +174,22 @@
   ok('AI 回复已进入对话', aiMsg.role === 'assistant' && /桌宠/.test(aiMsg.content), aiMsg.content.slice(0, 30));
   ok('AI 回复时桌宠出现气泡说话', bubShown() && /桌宠/.test(bubText()), 'shown=' + bubShown() + ' text=' + bubText());
   ok('气泡文本已截断（不超过 61 字）', bubText().length <= 61, 'len=' + bubText().length);
+  drain();
+  ok('此时未设角色卡 → 不注入角色设定、也没有任何预设话术',
+    !/【角色设定】/.test(chat.basePrompt())
+      && !/【模式|情绪安抚|认知解构|最小行动|温柔克制/.test(chat.basePrompt()),
+    chat.basePrompt().replace(/\n/g, '⏎').slice(0, 90));
+
+  /* ─────────── 8b. 设了角色卡后再聊一轮：system 只应有角色设定 ─────────── */
+  setRole(cardText);
+  chat.refreshRoleTag();
+  ok('恢复角色卡后顶部标签回到「扮演：刘哥」', /扮演：刘哥/.test($('chat-role').textContent || ''));
+  chat.send('你还记得我是谁吗');
+  await sleep(600);
+  const bp2 = chat.basePrompt();
+  ok('带角色卡的 system 只含【角色设定】，无任何模式/预设',
+    /【角色设定】/.test(bp2) && !/【模式|情绪安抚|认知解构|最小行动|温柔克制/.test(bp2),
+    bp2.replace(/\n/g, '⏎').slice(0, 90));
   drain();
 
   /* ─────────── 9. 长回复截断 + 出错也有气泡 ─────────── */
