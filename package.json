@@ -10,6 +10,9 @@
     "start": "electron .",
     "dev": "electron .",
     "fetch:bins": "node scripts/fetch-builder-bins.js",
+    "test": "node scripts/test-rolecard.js",
+    "test:ui": "electron scripts/test-persona-ui.js",
+    "test:all": "npm test && npm run test:ui",
     "dist": "electron-builder --win",
     "dist:dir": "electron-builder --win --dir",
     "release": "node scripts/publish-release.js"

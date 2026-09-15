@@ -123,6 +123,19 @@ npm run dist:dir    # 仅生成目录版（免安装）
 
 产物在 `release/` 目录下，可直接分发。
 
+### ✅ 自测
+
+改动角色卡解析 / 人设指令后，建议先跑一遍自测（无需手动点界面）：
+
+```bash
+npm test        # 角色卡解析 + 人设存取（Node，秒级，32 项断言）
+npm run test:ui # 真实 Electron 界面：导入 .json / test / 清除 / 气泡说话（35 项断言）
+npm run test:all
+```
+
+`test:ui` 会用一个**临时 userData 目录**启动真实页面（真 preload、真 DOM、真 FileReader），
+既不碰你正在用的数据，也不会和正在运行的桌宠抢单实例锁；界面窗口不显示，AI 请求走本地桩。
+
 ### 国内网络（GitHub 不通）打包说明
 
 electron-builder 默认从 **GitHub Releases** 下载打包辅助工具（nsis / winCodeSign），

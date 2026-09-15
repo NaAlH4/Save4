@@ -123,7 +123,11 @@
     var t = String(raw == null ? '' : raw).trim();
     if (!t) return { text: '', name: '', fields: [], format: 'empty', ok: false };
 
-    var looksJson = (t[0] === '{' || t[0] === '[');
+    // 只看首字符会漏掉「带注释/说明开头」的角色卡（如 // 备注 换行后接 {…}），
+    // 那种卡会被整段原文当人设注入。这里先剥掉前导注释与空白再判断。
+    var strictJson = (t[0] === '{' || t[0] === '[');
+    var head = t.replace(/^(?:\s|\/\/[^\n\r]*|\/\*[\s\S]*?\*\/)+/, '');
+    var looksJson = strictJson || head[0] === '{' || head[0] === '[';
     if (looksJson) {
       var p = lenientParse(t);
       if (p.ok && p.obj && typeof p.obj === 'object') {
@@ -137,8 +141,8 @@
         // JSON 合法但一个可用字段都没有 → 不要静默失效，退回原文并标注
         return { text: t, name: '', fields: [], format: 'json(无已知字段,按原文)', ok: true };
       }
-      // 解析失败 → 仍按原文使用，但明确标注，便于用户察觉
-      return { text: t, name: '', fields: [], format: '原始文本(非法JSON)', ok: true };
+      // 明确以 { / [ 开头却解析失败 → 按原文使用并标注，便于用户察觉
+      if (strictJson) return { text: t, name: '', fields: [], format: '原始文本(非法JSON)', ok: true };
     }
     return { text: t, name: '', fields: [], format: '纯文本', ok: true };
   }
@@ -411,6 +415,15 @@
     if (global.Save4.pet) global.Save4.pet.celebrate(900);
   }
 
+  /* 指令清除了人设后，同步设置面板的文本域/提示区。
+     否则面板里还留着旧 JSON，用户随手点一次「保存」就把人设又装回去了。 */
+  function syncRolePanel() {
+    var ta = document.getElementById('ai-rolecard');
+    if (ta) ta.value = '';
+    var info = document.getElementById('role-info');
+    if (info) info.textContent = '🧹 已清除角色卡人设（来自对话指令）';
+  }
+
   /* 处理本地指令；返回 true 表示已处理（不再请求 AI） */
   function handleLocalCommand(text) {
     // ① 加入待办
@@ -446,6 +459,7 @@
       S().write(ROLE_KEY, '');
       messages = [];            // 直接重置，不经过 newConv（避免顺带开关历史面板）
       convId = null;
+      syncRolePanel();
       pushMsg('assistant', '🧹 已清除角色卡设定，并重置了当前对话。\n'
         + '现在的人设：内置默认助手（温柔克制）。\n'
         + '小提示：长期记忆摘要仍会作为背景注入；若要一并清空，发送「清除记忆」。');
